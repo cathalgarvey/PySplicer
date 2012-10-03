@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 '''A set of classes that comprise core functionality in PySplicer.'''
 from copy import deepcopy # Needed for codon table imports..
+import itertools
 
-class IUPACTool:
-    '''IUPACTool provides methods for dealing with DNA using the IUPAC notation,
-    offer translation methods to regular expressions, expansion of redundant
-    sequences to possible permutations, conversion between RNA and DNA, and
-    generation of redundant base-pairing strings or regular expressions.'''
-    # B=Not A, V=Not T, D=Not C, H=Not G
-    # Strong and Weak: GC vs. AT
-    # "Keto" and "aMino": GT vs. AC
-    # "puRine" and "pYrimidine"; AG vs CT
-    # "-", "N", "." : Wildcards; any N.
-    iupac_re = {
+class bioseq(str):
+    'Inherits string methods in addition to some biological sequence-specific methods.'
+    iupac_re_chars = {
            'A': 'A',       'B': '[CGTU]',
            'C': 'C',       'D': '[AGTU]',
            'G': 'G',       'H': '[ACTU]',
@@ -21,9 +14,8 @@ class IUPACTool:
            'S': '[CG]',    'T': 'T', 'U': 'U',
            'V': '[ACG]',   'W': '[ATU]',
            'Y': '[CTU]',   '.': '[ACGTU]',
-           '-': '[ACGTU]'
-           }
-    iupac_complement = {
+           '-': '[ACGTU]' }
+    iupac_complement_chars = {
            "A":	"T", "T": "A",
            "C":	"G", "G": "C",
            "W":	"W", "S": "S",
@@ -33,73 +25,82 @@ class IUPACTool:
            "R":	"Y", "Y": "R",
            "V":	"B", "B": "V",
            "N":	"N", ".": ".",
-           "-":	"-"
-           }
-
-    def __init__(self, strict_type=''):
-        '''Arguments for strict_type are "dna" and "rna". In either case, the class is forced to deal only in
-        the appropriate type of nucleotide, raising a ValueError if given the wrong type.'''
-        self.strictmode = False
-        if strict_type:
-            self.strictmode = True
-            if strict_type.lower() == 'dna':
-                # Remove all mentions of Uracil.
-                del(self.iupac_re['U'])
-                for key in self.iupac_re.keys():
-                    self.iupac_re[key].replace("U", "")
-            elif strict_type.lower() == 'rna':
-                # Remove all mentions of Thymine.
-                del(self.iupac_re['T'])
-                for key in self.iupac_re.keys():
-                    self.iupac_re[key].replace("T", "")
-            elif strict_type.lower() == 'strict':
-                # This is only here to allow a mode that is strict on inputs but agnostic to type.
-                pass
-            else:
-                raise ValueError("Incorrect argument for strict_type in IUPACTool: must be either 'dna', 'rna', 'strict', or left unspecified.")
-        # Below list of characters is used to determine which letters are permissible.
-        self.iupac_characters = list(self.iupac_re.keys())
-
-    def nucleic_iupac_purify(self, iupac_sequence, strict=False, strip_flanking_wildcards=False):
+           "-":	"-" }
+    def __new__(self, value):
+        'Overrides default string behaviour to make all characters uppercase.'
+        # Strings, being immutable, don't use "__init__", they use "__new__".
+        strself = str.__new__(self, value.upper())
+        strself.rnachars = ["A","U","C","G"]
+        strself.dnachars = ["A","T","C","G"]
+        strself.aminochars = ['A','C','E','D','G','F','I','H','K','*',
+                              'M','L','N','Q','P','S','R','T','W','V','Y']
+        strself.iupacchars = ['A','C','B','D','G','H','K','-','M','N',
+                               'S','R','U','T','W','V','Y','.']
+        return strself
+    def as_codon_list(self, offset=0, trailing=False):
+        '''Slices the string into three-letter partitions with an optional starting offset.
+        Optional "trailing" argument tells the method to return additional letters after the last
+        set of three; this can cause bugs in parsers that expect only codons, so default is False.'''
+        if trailing:
+            from itertools import zip_longest
+            codonlist = [''.join(x) for x in zip_longest(self.upper()[offset::3],
+                                                         self.upper()[offset+1::3],
+                                                         self.upper()[offset+2::3],
+                                                         fillvalue='') ]
+        else:
+            codonlist = [''.join(x) for x in zip(self.upper()[offset::3],
+                                                 self.upper()[offset+1::3],
+                                                 self.upper()[offset+2::3]) ]
+        return codonlist
+    def _is_valid_x(self,alphabet):
+        'Helper method for type-validation methods; DNA/RNA/Aminos/IUPAC etc.'
+        for char in self:
+            if char not in alphabet:
+                return False
+        return True
+    def is_valid_dna(self):
+        '''Checks that string contains only DNA chars.'''
+        return self._is_valid_x(self.dnachars)
+    def is_valid_rna(self):
+        '''Checks that string contains only RNA chars.'''
+        return self._is_valid_x(self.rnachars)
+    def is_valid_amino(self):
+        '''Checks that string contains only Amino Acid chars.'''
+        return self._is_valid_x(self.aminochars)
+    def is_valid_iupac(self):
+        '''Checks that string contains only IUPAC DNA/RNA chars.'''
+        return self._is_valid_x(self.iupacchars)
+    def iupac_only(self, strip_flanking_wildcards=False, strict=False):
         '''Prunes only legal IUPAC DNA/RNA characters from a given string and returns those.
 
         If strict is set to True, this will raise a ValueError if any illegal characters are encountered.
         If strip_flanking_wildcards is set to True, this will strip "-", "." or "N" from either
         end of the given nucleotide sequence. This may be useful if the permutations of the resulting
         string are to be computed, in which case external wildcards are inefficient.'''
-        try:
-            assert isinstance(iupac_sequence, str) and isinstance(strict, bool) and isinstance(strip_flanking_wildcards, bool)
-        except AssertionError:
-            raise TypeError("iupac_sequence must be a string, and strict/strip_flanking_wildcards must be booleans.")
-        iupac_sequence = iupac_sequence.upper()
+        if strict and not self.is_valid_iupac():
+            raise ValueError("Value of bioseq does not appear to be valid IUPAC.")
         output_char_list = []
-        for char in iupac_sequence:
-            if char in self.iupac_characters:
+        for char in self:
+            if char in self.iupacchars:
                 output_char_list.append(char)
-            else:
-                if strict:
-                    raise ValueError("Illegal character passed to nucleic_iupac_purify in strict mode.")
         output_sequence = ''.join(output_char_list)
         if strip_flanking_wildcards:
-            # Not default behaviour, as nucleotides passed to this arg are not always user determined, and size/position
-            # of nucleotides in downstream assemblies may depend heavily on the flanking wildcards.
-            for char in ["N", "-", "."]:
-                output_sequence = output_sequence.replace(char, '')
+            output_sequence = output_sequence.strip("N-.")
         return output_sequence
-
-    def iupac_to_regex(self, sequence, return_pattern=False):
+    def iupac_to_regex(self, strip_wildcards = False, return_pattern=False):
         '''Uses a dictionary to assemble a (poorly formatted) python regex function from an IUPAC string.
 
         For example, given the DNA sequence "AWWSSTGGC", this method returns a regular expression object with
         this pattern: "A[ATU][ATU][GC][GC]TGGC". If the IUPACTools instance is set to strict_type dna/rna, the
         dictionary that powers this method will only output DNA or RNA regexes, and will raise a ValueError if
         an illegal character is detected.'''
+        if not self.is_valid_iupac():
+            raise ValueError("Cannot convert a non-iupac bioseq to an IUPAC regex.")
         import re
         # First off, get rid of the crap
-        sequence = self.nucleic_iupac_purify(sequence, self.strictmode)
         sequence_re_list = []
-        for base in sequence:
-            sequence_re_list.append(iupac_re[base])
+        for base in self.iupac_only(strip_wildcards):
+            sequence_re_list.append(self.iupac_re_chars[base])
         # Flatten the list into a string
         sequence_re_str = ''.join(sequence_re_list)
         # Compile a regex function from the string
@@ -107,33 +108,35 @@ class IUPACTool:
         if return_pattern:
             return sequence_re, sequence_re_str # Former is the regex, latter is just for verbose readout.
         return sequence_re
-
-    def iupac_complement(self, iupac_string):
+    def iupac_complement(self):
         'Returns the complement of a redundant iupac notation string in iupac notation.'
-        assert isinstance(sequence,str)
-        iupac_string = self.nucleic_iupac_purify(iupac_string, self.strictmode)
+        if not self.is_valid_iupac():
+            raise ValueError("Cannot get IUPAC Complement of a non-IUPAC string.")
         complement_sequence_list = []
-        for base in iupac_string:
-            complement_sequence_list.append(self.iupac_complement[base])
-        complement_sequence = ''.join(complement_sequence_list)
-        return complement_sequence
-
-    def iupac_rev_complement(self, iupac_string):
-        complement_string = self.iupac_complement(iupac_string)
-        return complement_string[::-1]
-
-    def all_iupac_permutations(self, iupac_string):
+        for base in self:
+            complement_sequence_list.append(self.iupac_complement_chars[base])
+        return ''.join(complement_sequence_list)
+    def iupac_rev_complement(self):
+        return self.iupac_complement()[::-1]
+    def to_rna(self):
+        if not self.is_valid_iupac():
+            raise ValueError("Cannot convert invalid IUPAC code to RNA.")
+        return self.replace("U","T")
+    def to_dna(self):
+        if not self.is_valid
+    def all_iupac_permutations(self, mode=None):
         '''Returns a list of possible permutations for a given IUPAC nucleotide string.
 
-        It is suggested that this only be used when in one of the "strict modes": "dna" or "rna",
-        both to avoid confusion and to reduce the number of permutations returned.
+        The "mode" argument can be set to "dna" or "rna" to convert sequence to one of
+        these modes prior to generating permutations; this can help reduce processing time
+        and the number of permutations returned.
         Warning: no size/sanity limits; if you pass large or highly redundant sequences to
         this method it may choke.'''
         # Will hold a list item of possible characters for each character in iupac_string.
         snp_list = []
         # Will hold the permutations for export.
         perm_list = []
-        iupac_string = self.nucleic_iupac_purify(iupac_string, self.strictmode)
+        iupac_string = self.iupac_only()
         for char in iupac_string:
             # Call up the regex function for a character, minus the brackets.
             snp_list.append(self.iupac_re[char].strip("[]"))
@@ -456,17 +459,14 @@ class CodonJuggler:
     * Select "best" amino for a given amino
     * Extend the above to lists of aminos, returning lists of codons
     * Return X permutations of RNA codons for a given peptide or codon list
+    * If given a "source table" for donor organism, "frequency match" strategy is used.
 
     Methods are provided to import and parse codon adaptation tables, to use these to provide information on
     codon lists or sequence strings, and to translate or reverse translate, with regard to codon frequency.
-
-    Therefore, removal of entire codons is possible, and ratio of remaining codons to one another will
-    be retained. This might be useful if a codon-replacement strategy is desirable for later re-use of codons
-    for alternative amino acids.
-    Methods can also return permutations of given sequences that retain amino identity, which can help when
-    resolving problems detected by NucleotideMapper instances for example.'''
-    def __init__(self, codontable):
+    '''
+    def __init__(self, codontable, sourcetable=None):
         self.codontable = codontable
+        self.sourcetable= sourcetable
 
     def analyse_cai_str(self, codonstring, frameoffset=0):
         pass
@@ -474,130 +474,4 @@ class CodonJuggler:
     def analyse_cai_list(self, codonlist):
         pass
 
-class bioseq(str):
-    'Inherits string methods in addition to some biological sequence-specific methods.'
-    iupac_re_chars = {
-           'A': 'A',       'B': '[CGTU]',
-           'C': 'C',       'D': '[AGTU]',
-           'G': 'G',       'H': '[ACTU]',
-           'K': '[GTU]',   'M': '[AC]',
-           'N': '[ACGTU]', 'R': '[AG]',
-           'S': '[CG]',    'T': 'T', 'U': 'U',
-           'V': '[ACG]',   'W': '[ATU]',
-           'Y': '[CTU]',   '.': '[ACGTU]',
-           '-': '[ACGTU]' }
-    iupac_complement_chars = {
-           "A":	"T", "T": "A",
-           "C":	"G", "G": "C",
-           "W":	"W", "S": "S",
-           "B":	"V", "V": "B",
-           "H":	"D", "D": "H",
-           "M":	"K", "K": "M",
-           "R":	"Y", "Y": "R",
-           "V":	"B", "B": "V",
-           "N":	"N", ".": ".",
-           "-":	"-" }
-    def __new__(self, value):
-        'Overrides default string behaviour to make all characters uppercase.'
-        # Strings, being immutable, don't use "__init__", they use "__new__".
-        strself = str.__new__(self, value.upper())
-        strself.rnachars = ["A","U","C","G"]
-        strself.dnachars = ["A","T","C","G"]
-        strself.aminochars = ['A','C','E','D','G','F','I','H','K','*',
-                              'M','L','N','Q','P','S','R','T','W','V','Y']
-        strself.iupacchars = ['A','C','B','D','G','H','K','-','M','N',
-                               'S','R','U','T','W','V','Y','.']
-        return strself
-    def as_codon_list(self, offset=0, trailing=False):
-        '''Slices the string into three-letter partitions with an optional starting offset.
-        Optional "trailing" argument tells the method to return additional letters after the last
-        set of three; this can cause bugs in parsers that expect only codons, so default is False.'''
-        if trailing:
-            from itertools import zip_longest
-            codonlist = [''.join(x) for x in zip_longest(self.upper()[offset::3],
-                                                         self.upper()[offset+1::3],
-                                                         self.upper()[offset+2::3],
-                                                         fillvalue='') ]
-        else:
-            codonlist = [''.join(x) for x in zip(self.upper()[offset::3],
-                                                 self.upper()[offset+1::3],
-                                                 self.upper()[offset+2::3]) ]
-        return codonlist
-    def _is_valid_x(self,alphabet):
-        'Helper method for type-validation methods; DNA/RNA/Aminos/IUPAC etc.'
-        for char in self:
-            if char not in alphabet:
-                return False
-        return True
-    def is_valid_dna(self):
-        '''Checks that string contains only DNA chars.'''
-        return self._is_valid_x(self.dnachars)
-    def is_valid_rna(self):
-        '''Checks that string contains only RNA chars.'''
-        return self._is_valid_x(self.rnachars)
-    def is_valid_amino(self):
-        '''Checks that string contains only Amino Acid chars.'''
-        return self._is_valid_x(self.aminochars)
-    def is_valid_iupac(self):
-        '''Checks that string contains only IUPAC DNA/RNA chars.'''
-        return self._is_valid_x(self.iupacchars)
-    def iupac_only(self, strip_flanking_wildcards=False, strict=False):
-        '''Prunes only legal IUPAC DNA/RNA characters from a given string and returns those.
 
-        If strict is set to True, this will raise a ValueError if any illegal characters are encountered.
-        If strip_flanking_wildcards is set to True, this will strip "-", "." or "N" from either
-        end of the given nucleotide sequence. This may be useful if the permutations of the resulting
-        string are to be computed, in which case external wildcards are inefficient.'''
-        if strict and not self.is_valid_iupac():
-            raise ValueError("Value of bioseq does not appear to be valid IUPAC.")
-        output_char_list = []
-        for char in self:
-            if char in self.iupacchars:
-                output_char_list.append(char)
-        output_sequence = ''.join(output_char_list)
-        if strip_flanking_wildcards:
-            output_sequence = output_sequence.strip("N-.")
-        return output_sequence
-    def iupac_to_regex(self, strip_wildcards = False, return_pattern=False):
-        '''Uses a dictionary to assemble a (poorly formatted) python regex function from an IUPAC string.
-
-        For example, given the DNA sequence "AWWSSTGGC", this method returns a regular expression object with
-        this pattern: "A[ATU][ATU][GC][GC]TGGC". If the IUPACTools instance is set to strict_type dna/rna, the
-        dictionary that powers this method will only output DNA or RNA regexes, and will raise a ValueError if
-        an illegal character is detected.'''
-        if not self.is_valid_iupac():
-            raise ValueError("Cannot convert a non-iupac bioseq to an IUPAC regex.")
-        import re
-        # First off, get rid of the crap
-        sequence_re_list = []
-        for base in self.iupac_only(strip_wildcards):
-            sequence_re_list.append(self.iupac_re_chars[base])
-        # Flatten the list into a string
-        sequence_re_str = ''.join(sequence_re_list)
-        # Compile a regex function from the string
-        sequence_re = re.compile(sequence_re_str)
-        if return_pattern:
-            return sequence_re, sequence_re_str # Former is the regex, latter is just for verbose readout.
-        return sequence_re
-    def iupac_complement(self):
-        'Returns the complement of a redundant iupac notation string in iupac notation.'
-        if not self.is_valid_iupac():
-            raise ValueError("Cannot get IUPAC Complement of a non-IUPAC string.")
-        complement_sequence_list = []
-        for base in self:
-            complement_sequence_list.append(self.iupac_complement_chars[base])
-        return ''.join(complement_sequence_list)
-    def iupac_rev_complement(self):
-        return self.iupac_complement()[::-1]
-    def to_rna(self):
-        if not self.is_valid_iupac():
-            raise ValueError("Cannot convert invalid IUPAC code to RNA.")
-        return self.replace("U","T")
-    def to_dna(self):
-        if not self.is_valid
-
-Tim Buckley - 0214385956
-0862748776
-
-
-mytestdna = bioseq("agcctagtctggtgtcggcagcataggctattaataattaaataa")
