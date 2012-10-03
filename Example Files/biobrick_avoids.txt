@@ -32,15 +32,10 @@ FokI
 SapI
 TspRI
 I-CeuI
-CeuI
 I-SceI
-SceI
 PI-PspI
-PspI
 PI-SceI
-SceI
 I-PpoI
-PpoI
 # Homing Endonuclease
 BbvCI
 BstNBI

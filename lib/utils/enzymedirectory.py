@@ -150,7 +150,7 @@ class EnzymeDirectory:
                     returned_enzymes.append(self.enzymes[hit])
                 return returned_enzymes
             elif len(hits)>1:
-                raise ValueError("Several matches found:"+str(hits)) 
+                raise ValueError("Several matches found for query "+searchkey+": "+str(hits)) 
             else:
                 # Normal behaviour: output enzyme data.
                 return [self.enzymes[hits[0]]]

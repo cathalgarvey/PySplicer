@@ -11,6 +11,59 @@
   "organism": "Bifidobacterium infantis S76e", 
   "methylation_site": ""
  }, 
+ "i-ceui": {
+  "target_site":"CGTAACTATAACGGTCCTAAGGTAGCGAA(-9/-13)",
+  "name":"I-CeuI",
+  "suppliers": [],
+  "source": "",
+  "references": [],
+  "prototype": "",
+  "organism":"Chlamydomonas eugametos",
+  "methylation_site": ""
+ },
+ "i-ppoi": {
+  "target_site":"CKMBCKTNAGRKAGC(-6/-10)",
+  "name":"I-PpoI",
+  "suppliers": [],
+  "source": "",
+  "references": [
+   "Wittmayer, P., McKenzie, J., Raines, R., (1998) Gene, vol. 206, pp. 11-21"
+  ],
+  "prototype": "",
+  "organism":"Physarum polycephalum",
+  "methylation_site": ""
+ },
+ "i-scei": {
+  "target_site":"TAGGGATAACAGGGTAAT(-9/-13)",
+  "name":"I-SceI",
+  "suppliers": [],
+  "source": "",
+  "references": [],
+  "prototype": "",
+  "organism":"Mitochondrion (Saccharomyces cerevisiae)",
+  "methylation_site": ""
+ },
+ "pi-scei": {
+  "target_site":"ATCTATGTCGGGTGCGGAGAAAGAGGTAAT(-15/-19)",
+  "name":"PI-SceI",
+  "suppliers": [],
+  "source": "",
+  "references": [],
+  "prototype": "",
+  "organism":"Saccharomyces cerevisiae",
+  "methylation_site": ""
+ },
+ "pi-pspi": {
+  "target_site":"TGGCAAACAGCTATTATGGGTATTATGGGT(-13/-17)",
+  "name":"PI-PspI",
+  "suppliers": [],
+  "source": "",
+  "references": [],
+  "prototype": "",
+  "organism":"Pyrococcus GB-D",
+  "methylation_site": ""
+ },
+
  "sthhi": {
   "target_site": "GGTACC", 
   "name": "SthHI", 
