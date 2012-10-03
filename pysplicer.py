@@ -601,12 +601,6 @@ class rev_translate_rna:
 
         Returns this list and the size of the largest encountered sequence.'''
         self.verbose_msg("Parsing through excluded enzyme list.")
-        def cleanupsite(site):
-            charhit_list = '0123456789()<>^\\/-[],.'
-            for char in charhit_list:
-                site = site.replace(char, '')
-            site = site.strip().strip("N") # Kill whitespace and random flanking Ns!
-            return site.upper()
         assert isinstance(exclude_list, list)
         output_list = []
         largest = 0
