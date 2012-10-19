@@ -15,47 +15,6 @@ import itertools
 import re
 from math import ceil, floor
 
-# Below: Some files and directories are required for the script to correctly import codon tables etc.,
-# so first the expected directories are set to variables, and then it's checked whether or not they exist.
-script_dir = sys.path[0] # Gives script directory. Default/imported codon tables will be here.
-lib_dir = os.path.join(script_dir, 'lib')
-codon_table_dir = os.path.join(lib_dir, 'codontables')
-working_dir = os.getcwd() # Gives current working directory.
-for needed_dir in [script_dir, lib_dir, codon_table_dir]:
-    try:
-        assert os.path.exists(needed_dir)
-    except AssertionError:
-        print("Could not find necessary directory: "+needed_dir+". Aborting.")
-        sys.exit(1)
-
-# Below: Initialise ArgumentParser object, which provides the nice CLI interface.
-arg_parser = argparse.ArgumentParser(description=('Performs reverse-translation and weighted-random '
-                                         'codon optimisation on an amino acid sequence. '
-                                         'Default setting is an E.coli table derived from '
-                                         'empirical synthetic DNA research by Welch et al, '
-                                         '2009.'))
-arg_parser.add_argument('infile', type=str,
-                       help='Protein sequence, in FASTA file format, to be reverse translated and codon optimised.')
-arg_parser.add_argument('-d', '--output-dna', action='store_true',
-                       help='Output codon-optimised sequence as DNA, not RNA.')
-arg_parser.add_argument('-v', '--verbose', action='store_true',
-                       help='Print far more information during processing.')
-arg_parser.add_argument('-s', '--species', type=str, default='default_ecoli',
-                       help='Species to optimise DNA for. Default is E.coli.')
-arg_parser.add_argument('-x', '--exclude-sites',
-                       help=('A json-formatted list of DNA or RNA substrings to forbid, '
-                             'usually restriction enzyme target sites.'))
-arg_parser.add_argument('-m', '--min-codon-frequency', type=float, default=0.0,
-                       help=('A minimum codon frequency to accept; frequencies below this are discarded and'
-                            ' remaining codon frequencies re-normalised.'))
-arg_parser.add_argument('-n', '--splice-candidates', type=int, default=0,
-                       help=('Number of random candidate codon sets to generate before attempting to splice '
-                             'together a suitably enzyme-free set. Larger numbers of candidates may be useful '
-                             'when attempting to exclude many sites, or highly redundant sites.'))
-arg_parser.add_argument('--usage', action='store_true',
-                       help='Ignore other flags/input and provide detailed usage information.')
-
-args = vars(arg_parser.parse_args()) # vars makes a dict of the results.
 # ============================================================================================== #
 # Below: The class that does most of the heavy lifting here:
 
@@ -89,7 +48,7 @@ class rev_translate_rna:
             self.excluderegexes, self.largestexclude = self.parse_excludes_to_regex(excludesites)
         except AssertionError:
             err_then_exit("Error: Provided 'excludesites' not a list of strings!")
-        self.report("Forbidden sequences:\r\n"+json.dumps(self.excludesites, indent=1))
+        self.report("Forbidden sequences:\r\n"+json.dumps(self.excludesites))
 
         try:
             self.codontable = self.import_codon_table(codontable, min_codon_frequency)
@@ -507,7 +466,7 @@ class rev_translate_rna:
                 else:
                     print("Error in map_excluded_sites.")
         self.verbose_msg("Mapper: Finished! Returning to reverse translator.")
-        self.verbose_msg("Mapper: Issues are: "+json.dumps(found_issues,indent=1))
+        self.verbose_msg("Mapper: Issues are: \r\n"+json.dumps(found_issues))
         return found_issues
 
     def select_codon(self, amino, index=None, floor=0.0):
@@ -623,15 +582,15 @@ class rev_translate_rna:
         this pattern: "A[AT][AT][GC][GC]TGGC"'''
         # For those not familiar with regex, square brackets mean "any one of the contents".
         # Therefore, [AGC] means either A, G or C.
-        iupac_re = { 'A': 'A',    'B': '[CGT]',
-                     'C': 'C',    'D': '[AGT]',
-                     'G': 'G',    'H': '[ACT]',
-                     'K': '[GT]',   'M': '[AC]',
-                     'N': '[ACGT]', 'R': '[AG]',
-                     'S': '[GC]',   'T': 'T',
-                     'V': '[ACG]',  'W': '[AT]',
-                     'Y': '[CT]',   '.': '[ACGT]',
-                     '-': '[ACGT]' }
+        iupac_re = { 'A': 'A',    'B': '[CGTU]',
+                     'C': 'C',    'D': '[AGTU]',
+                     'G': 'G',    'H': '[ACTU]',
+                     'K': '[GTU]',   'M': '[AC]',
+                     'N': '[ACGTU]', 'R': '[AG]',
+                     'S': '[GC]',   'T': '[TU]',
+                     'V': '[ACG]',  'W': '[ATU]',
+                     'Y': '[CTU]',   '.': '[ACGTU]',
+                     '-': '[ACGTU]' }
         # First off, get rid of the crap
         sequence = self.nucleic_iupac_purify(sequence, strip_flanking_wildcards=True)
         # Then, create an empty list, and append it with regex substitutes for each IUPAC letter
@@ -789,105 +748,152 @@ class rev_translate_rna:
 
 # ======================================================================== #
 # Below: Some functions that might be better off as methods for the sake of portability:
-from fasta_utils import read_fasta_file
+if __name__ == "__main__":
+    from fasta_utils import read_fasta_file
 
-def import_codon_table(codon_table_file):
-    '''Expects a file containing a codontable in json format.
+    # Below: Some files and directories are required for the script to correctly import codon tables etc.,
+    # so first the expected directories are set to variables, and then it's checked whether or not they exist.
+    script_dir = sys.path[0] # Gives script directory. Default/imported codon tables will be here.
+    lib_dir = os.path.join(script_dir, 'lib')
+    codon_table_dir = os.path.join(lib_dir, 'codontables')
+    working_dir = os.getcwd() # Gives current working directory.
+    for needed_dir in [script_dir, lib_dir, codon_table_dir]:
+        try:
+            assert os.path.exists(needed_dir)
+        except AssertionError:
+            print("Could not find necessary directory: "+needed_dir+". Aborting.")
+            sys.exit(1)
 
-    codontable: Should be a dict mapping amino acid letters to codons with frequencies. Example entry:
-    "C": { "TGC": { "frequency": 0.5772005772005773 },
-           "TGT": { "frequency": 0.42279942279942284}  }
-    The file can actually contain other metadata for each codon, but should not contain keys other
-    than codons for each amino acid; keys are assumed to correspond to codons only. Likewise, keys
-    in the "master" dictionary are assumed to be amino acids and will be imported as such, although
-    there is less risk of errors here as keys will only become relevant if called by a function/method.'''
-    import json
-    codon_table_fileDir = os.path.join(codon_table_dir, codon_table_file + '.json')
-    with open(codon_table_fileDir) as TableFile:
-        codon_table = json.loads(TableFile.read())
-    assert isinstance(codon_table, dict)
-    ReturnTable = {}
-    for amino in codon_table.keys(): # Assumes all keys are amino acids.
-        ReturnTable[amino] = {}
-        for codon in codon_table[amino].keys(): # Assumes all keys are codons.
-            # What does this achieve, exactly? It just prunes codontable and verifies that each
-            #  codon has a frequency value..useful?
-            try: ReturnTable[amino][codon] = {'frequency':codon_table[amino][codon]['frequency']}
-            except: print("codon "+codon+" of amino "+amino+" has no 'frequency' key! Skipped.")
-    return ReturnTable
+    # Below: Initialise ArgumentParser object, which provides the nice CLI interface.
+    arg_parser = argparse.ArgumentParser(description=('Performs reverse-translation and weighted-random '
+                                         'codon optimisation on an amino acid sequence. '
+                                         'Default setting is an E.coli table derived from '
+                                         'empirical synthetic DNA research by Welch et al, '
+                                         '2009.'))
+    arg_parser.add_argument('infile', type=str,
+                       help='Protein sequence, in FASTA file format, to be reverse translated and codon optimised.')
+    arg_parser.add_argument('-d', '--output-dna', action='store_true',
+                       help='Output codon-optimised sequence as DNA, not RNA.')
+    arg_parser.add_argument('-v', '--verbose', action='store_true',
+                       help='Print far more information during processing.')
+    arg_parser.add_argument('-s', '--species', type=str, default='default_ecoli',
+                       help='Species to optimise DNA for. Default is E.coli.')
+    arg_parser.add_argument('-x', '--exclude-sites',
+                       help=('A json-formatted list of DNA or RNA substrings to forbid, '
+                             'usually restriction enzyme target sites.'))
+    arg_parser.add_argument('-m', '--min-codon-frequency', type=float, default=0.0,
+                       help=('A minimum codon frequency to accept; frequencies below this are discarded and'
+                            ' remaining codon frequencies re-normalised.'))
+    arg_parser.add_argument('-n', '--splice-candidates', type=int, default=0,
+                       help=('Number of random candidate codon sets to generate before attempting to splice '
+                             'together a suitably enzyme-free set. Larger numbers of candidates may be useful '
+                             'when attempting to exclude many sites, or highly redundant sites.'))
+    arg_parser.add_argument('--usage', action='store_true',
+                       help='Ignore other flags/input and provide detailed usage information.')
 
-def import_exclusions(exclude_file):
-    '''Expects a JSON formatted file containing a simple list of IUPAC DNA sequences to avoid.
+    args = vars(arg_parser.parse_args()) # vars makes a dict of the results.
 
-    sites are expanded into permutations and stored in the object for comparison to draft sequences.
-    Providing too many sites with ambiguous characters from the IUPAC set may result in huge exclusion
-    lists, potential program slowdown or crashing. For the love of all that's holy, strip unnecessary "N"
-    characters from TypeIIs or Homing Endonucleases, where sites may often be written with lots of Ns outside
-    the actual recognition area; this program will assume these are relevant and will generate 4^(number of Ns)
-    permutations.'''
 
-    if not isinstance(exclude_file, str):
-        return []
-    with open(exclude_file) as excludes_file:
-        excludesList = json.loads(excludes_file.read())
-    assert isinstance(excludesList, list)
-    IUPACDNA = 'ABCDGHKMNRSTVWY.-'
-    for exclude in excludesList:
-        for char in exclude:
-            assert char in IUPACDNA
-    return excludesList
+    def import_codon_table(codon_table_file):
+        '''Expects a file containing a codontable in json format.
 
-# ======================================================================== #
-# Below: Parse all those args from above.
+        codontable: Should be a dict mapping amino acid letters to codons with frequencies. Example entry:
+        "C": { "TGC": { "frequency": 0.5772005772005773 },
+               "TGT": { "frequency": 0.42279942279942284}  }
+        The file can actually contain other metadata for each codon, but should not contain keys other
+        than codons for each amino acid; keys are assumed to correspond to codons only. Likewise, keys
+        in the "master" dictionary are assumed to be amino acids and will be imported as such, although
+        there is less risk of errors here as keys will only become relevant if called by a function/method.'''
+        import json
+        codon_table_fileDir = os.path.join(codon_table_dir, codon_table_file + '.json')
+        with open(codon_table_fileDir) as TableFile:
+            codon_table = json.loads(TableFile.read())
+        assert isinstance(codon_table, dict)
+        ReturnTable = {}
+        for amino in codon_table.keys(): # Assumes all keys are amino acids.
+            ReturnTable[amino] = {}
+            for codon in codon_table[amino].keys(): # Assumes all keys are codons.
+                # What does this achieve, exactly? It just prunes codontable and verifies that each
+                #  codon has a frequency value..useful?
+                try: ReturnTable[amino][codon] = {'frequency':codon_table[amino][codon]['frequency']}
+                except: print("codon "+codon+" of amino "+amino+" has no 'frequency' key! Skipped.")
+        return ReturnTable
 
-# args contains: 'infile', 'output_dna', 'species', 'exclude_sites', 'min_codon_frequency', 'usage', 'splice_candidates'
-# Usage: RevTranslatedRNA(aminos, codontable, excludesites, output_dna=False):
-fasta_dict = read_fasta_file(args['infile'])
-amino_sequence = fasta_dict['sequence']
+    def import_exclusions(exclude_file):
+        '''Expects a JSON formatted file containing a simple list of IUPAC DNA sequences to avoid.
 
-if not amino_sequence:
-    print("No valid amino Acid sequence found in target file. Quitting.")
-    sys.exit(1)
-try:
-    species_codon_table = import_codon_table(args['species'])
-except AssertionError:
-    print("codon table file specified is not a dict. Quitting.")
-    sys.exit(1)
-except KeyError:
-    print("Encountered a missing dictionary key (amino? codon?) while parsing and pruning codon Table. Quitting.")
-    sys.exit(1)
+        sites are expanded into permutations and stored in the object for comparison to draft sequences.
+        Providing too many sites with ambiguous characters from the IUPAC set may result in huge exclusion
+        lists, potential program slowdown or crashing. For the love of all that's holy, strip unnecessary "N"
+        characters from TypeIIs or Homing Endonucleases, where sites may often be written with lots of Ns outside
+        the actual recognition area; this program will assume these are relevant and will generate 4^(number of Ns)
+        permutations.'''
 
-try:
-    site_exclusion_list = import_exclusions(args['exclude_sites'])
-except AssertionError:
-    print(("Either the specified file doesn't encode a list,"
+        if not isinstance(exclude_file, str):
+            return []
+        with open(exclude_file) as excludes_file:
+            excludesList = json.loads(excludes_file.read())
+        assert isinstance(excludesList, list)
+        IUPACDNA = 'ABCDGHKMNRSTVWY.-'
+        for exclude in excludesList:
+            for char in exclude:
+                assert char in IUPACDNA
+        return excludesList
+
+    # ======================================================================== #
+    # Below: Parse all those args from above.
+
+    # args contains: 'infile', 'output_dna', 'species', 'exclude_sites', 'min_codon_frequency', 'usage', 'splice_candidates'
+    # Usage: RevTranslatedRNA(aminos, codontable, excludesites, output_dna=False):
+    fasta_dict = read_fasta_file(args['infile'])
+    amino_sequence = fasta_dict['sequence']
+
+    if not amino_sequence:
+        print("No valid amino Acid sequence found in target file. Quitting.")
+        sys.exit(1)
+    try:
+        species_codon_table = import_codon_table(args['species'])
+    except AssertionError:
+        print("codon table file specified is not a dict. Quitting.")
+        sys.exit(1)
+    except KeyError:
+        print("Encountered a missing dictionary key (amino? codon?) while parsing and pruning codon Table. Quitting.")
+        sys.exit(1)
+
+    try:
+        site_exclusion_list = import_exclusions(args['exclude_sites'])
+    except AssertionError:
+        print(("Either the specified file doesn't encode a list,"
            "or the list entries aren't all valid IUPAC DNA strings.\r\n"
            "NB: permitted IUPAC DNA codes are 'ABCDGHKMNRSTVWY.-'"
            "\r\nProgram will quit."))
-    sys.exit(1)
+        sys.exit(1)
 
-# Below: Argparser does funny things with some optional arguments if unset. For e.g., "store true" arguments, if unset,
-# are stored as "None", not as "False". To ward against obscure bugs due to such behaviour, the below just sets args
-# in stone before applying to the object.
-def make_none_false(argparse_output):
-    if argparse_output == None:
-        return False
-    else:
-        return argparse_output
+    # Below: Argparser does funny things with some optional arguments if unset. For e.g., "store true" 
+    # arguments, if unset, are stored as "None", not as "False". To ward against obscure bugs due to
+    # such behaviour, the below just sets args in stone before applying to the object.
+    def make_none_false(argparse_output):
+        if argparse_output == None:
+            return False
+        else:
+            return argparse_output
 
-dna_arg = make_none_false(args['output_dna'])
-verbose_arg = make_none_false(args['verbose'])
-if args['min_codon_frequency']: freq_arg = args['min_codon_frequency']
-else: freq_arg = 0.0
-if args['splice_candidates']: splices_arg = args['splice_candidates']
-else: splices_arg = 0
+    dna_arg = make_none_false(args['output_dna'])
+    verbose_arg = make_none_false(args['verbose'])
+    if args['min_codon_frequency']: freq_arg = args['min_codon_frequency']
+    else: freq_arg = 0.0
+    if args['splice_candidates']: splices_arg = args['splice_candidates']
+    else: splices_arg = 0
 
-# Below: Make the magic happen. Instantiate reverse_translator and perform usual operations to get desired output.
-reverse_translator = rev_translate_rna(amino_sequence, species_codon_table, site_exclusion_list, freq_arg, dna_arg, splices_arg, verbose_arg)
-reverse_translator.splice_sequences()
-reverse_translator.optimise_sequence()
+    # Below: Make the magic happen. Instantiate reverse_translator and perform usual operations to get
+    # desired output.
+    reverse_translator = rev_translate_rna(amino_sequence, species_codon_table, site_exclusion_list,
+                                           freq_arg, dna_arg, splices_arg, verbose_arg)
+    reverse_translator.splice_sequences()
+    reverse_translator.optimise_sequence()
 
-# Deliver results of algorithmic goodness:
-reverse_translator.verbose_msg("codons with remaining issues: "+json.dumps(reverse_translator.ignoredcodons))
-reverse_translator.verbose_msg("\r\nOutput:\r\n")
-print(reverse_translator.give_output())
+    # Deliver results of algorithmic goodness:
+    reverse_translator.verbose_msg("codons with remaining issues: "+\
+                                    json.dumps(reverse_translator.ignoredcodons))
+    reverse_translator.verbose_msg("\r\nOutput:\r\n")
+    print(reverse_translator.give_output())

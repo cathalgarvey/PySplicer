@@ -121,9 +121,11 @@ class bioseq(str):
     def to_rna(self):
         if not self.is_valid_iupac():
             raise ValueError("Cannot convert invalid IUPAC code to RNA.")
-        return self.replace("U","T")
+        return self.replace("T","U")
     def to_dna(self):
-        if not self.is_valid
+        if not self.is_valid_iupac():
+            raise ValueError("Cannot convert invalid IUPAC code to DNA.")
+        return self.replace("U","T")
     def all_iupac_permutations(self, mode=None):
         '''Returns a list of possible permutations for a given IUPAC nucleotide string.
 
@@ -144,20 +146,6 @@ class bioseq(str):
         for item in perm_generator:
             perm_list.append(''.join(item))
         return perm_list
-
-class NucleotideMapper:
-    '''DNAMapper is a class that can be fed and updated with DNA/RNA sites
-    that are undesirable in a sequence, and which provides search functions
-    for mapping any matches in a target sequence by string or list index
-    (depending on which method is called), so that other class methods or
-    functions can resolve these issues.
-
-    Supported features that this can discover: consensus sites or redundant
-    DNA/RNA sequences.
-    Planned features: Detection of secondary structure by fold-and-walk of
-    the sequence with a minimum structure-seeking threshold. Detection of
-    potential G-quadroplexes. Detection of conspicuous sites of DNA torsion?'''
-    pass
 
 class CodonTable:
     '''Contains and provides data for codon usage tables. Methods can be used to return encoded amino acids,
@@ -394,8 +382,9 @@ class CodonTable:
                     assert X in presentcodons
         except AssertionError: raise ValueError("Codon Table is not valid.")
 
-    def splice_table(self, other_table, lower_threshold=0.1):
-        'Attempts to find a compromise table between internal table and a given table. Uses self._splice_table method.'
+    def splice_table(self, other_table, lower_threshold=0.05):
+        '''Attempts to find a compromise table between internal table and a given table.
+        Uses self._splice_table method. Arguments: "other table", "lower threshold" (float)'''
         table_attempt = self._splice_table(self.codontable, other_table, lower_threshold)
         if table_attempt:
             # Strict mode false: this is one of a few legitimate cases where codons may be entirely absent:
@@ -407,7 +396,9 @@ class CodonTable:
             return False
 
     def _splice_table(self, table1, table2, threshold, verbose=False):
-        '''Create a compromise table between table1 and table2, attempting to omit codons that fall below lower_threshold frequency.
+        '''Create a compromise table between table1 and table2, attempting to omit
+        codons that fall below lower_threshold frequency. Args: table1, table2,
+        threshold (float i.e. 0.1 for 10%), float.
 
         Compromise is reached using the following strategy:
           - First, check that codons exist for all amino acids.
@@ -450,6 +441,20 @@ this probably indicates an overambitious threshold frequency or totally incompat
         CompromiseTable = self.balance_frequencies(CompromiseTable)
         return CompromiseTable
 
+class NucleotideMapper:
+    '''DNAMapper is a class that can be fed and updated with DNA/RNA sites
+    that are undesirable in a sequence, and which provides search functions
+    for mapping any matches in a target sequence by string or list index
+    (depending on which method is called), so that other class methods or
+    functions can resolve these issues.
+
+    Supported features that this can discover: consensus sites or redundant
+    DNA/RNA sequences.
+    Planned features: Detection of secondary structure by fold-and-walk of
+    the sequence with a minimum structure-seeking threshold. Detection of
+    potential G-quadroplexes. Detection of conspicuous sites of DNA torsion?'''
+    pass
+
 class CodonJuggler:
     '''Can translate codons or reverse-translate them, using an embedded CodonTable object.
 
@@ -461,8 +466,9 @@ class CodonJuggler:
     * Return X permutations of RNA codons for a given peptide or codon list
     * If given a "source table" for donor organism, "frequency match" strategy is used.
 
-    Methods are provided to import and parse codon adaptation tables, to use these to provide information on
-    codon lists or sequence strings, and to translate or reverse translate, with regard to codon frequency.
+    Methods are provided to use an embedded codon table object to provide information on
+    codon lists or sequence strings, and to translate or reverse translate, with regard
+    to codon frequency.
     '''
     def __init__(self, codontable, sourcetable=None):
         self.codontable = codontable
