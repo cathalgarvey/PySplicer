@@ -1,0 +1,4 @@
+include COPYING.txt
+recursive-include docs *.html *.css *.png *.jpg *.gif
+exclude scratch
+prune scratch

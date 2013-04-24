@@ -1,54 +1,63 @@
-# PySplicer
-by Cathal Garvey, August 2012.
-Documentation and JSON under Creative Commons, Attribution, Sharealike License.
-Python code under GNU Public License.
+PySplicer
+=========
+A frequency/bias codon optimisation system with early NGG avoidance and optional
+IUPAC match avoidance.
 
-## Que?
-PySplicer is a codon optimisation script that operates on a weighted random basis to try and provide an RNA sequence for a given amino acid based on a desired codon frequency table.
+By Cathal Garvey, released under the GNU Affero General Public License.
 
-When used with a codon frequency table for constitutively expressed genes in a target species, this is a fairly good way of codon-optimising a sequence for expression in a target species. When used with a table that has been empirically proven to provide high expression, this can be used to design genes for protein overexpression and production.
+Installation
+------------
+PySplicer is pure python and requires no compilation or building nonsense.
 
-I wrote this because there are not many tools that support this approach; most codon optimisation tools available today are based on a somewhat disproven "best pick" approach that preferentially chooses the "most adapted" codon for each amino acid. Experimental evidence shows that this approach not only fails to achieve exceptional results, but can sometimes lead to *worse* protein expression, perhaps due to exhaustion of a limited pool of charged tRNAs for a given codon faster than cognate tRNA synthetases can compensate.
+The easiest way to install pysplicer is using pip-3.2, if you have it installed.
+easy-install may also work to install pysplicer without headaches.
 
-## Usage
-PySplicer is a CLI application as written, although the code should be adaptable to web services using something like CherryPy without too much extra difficulty.
-CLI usage can be informed by typing "./pysplicer.py -h" in terminal, when in the same directory as pysplicer.
+The next best thing is to download the latest version from the github repository,
+enter the directory through the terminal, and call "python3 setup.py install"
+with administrator/sudo/root privileges.
 
-Suggested usage is something like this:
-me@mycomputer:~/Applications/PySplicer$ ./pysplicer.py -x Enzymes_Example GFP_WT
+Usage
+-----
+PySplicer consists of a Python Module and a python script for terminal usage.
+For usage information on the script, after installing this package with pip-3.2
+or setup.py, try typing "pysplicer --help" into the terminal.
 
-If you want to see *loads* of debugging information, try adding the -v argument.
+What is PySplicer?
+------------------
+PySplicer is a Free Software implementation of a codon optimisation method where
+codons are selected based on a frequency table, usually to match target host
+frequencies but also (where possible) to match empirically determined
+high-expression tables which usually give better expression results.
 
-## Process
-PySplicer first generates a set of candidate RNA codon lists from the given amino acid sequence. By default, it creates 20 sets, but you can change this with the -n argument in the Terminal.
+PySplicer does not (yet) implement all best practices for codon optimisation,
+but compared to most available Free Software codon optimisation programs, it is
+pretty good. While most programs still make use of the somewhat-discredited
+"best pick" method, where the most common codon in "highly expressed" genes is
+preferentially selected wherever possible, the frequency-matching approach appears
+to deliver better results in general, and a frequency matching approach that
+biases towards codons whose tRNAs remain charged under starvation conditions
+appears to give even better results.
 
-Each of these lists is created by selecting by weighted-random a codon for each amino acid. You can choose a minimum frequency, whereupon the optimiser will recalculate the codon table as if any codons less common than the given frequency simply don't exist. This may cause crashes, see "unresolved issues" below.
+PySplicer can be directed to avoid DNA/RNA sequences in the final output, which
+it attempts to accomplish firstly be generating large numbers of candidates and
+walking through them to avoid such sites, and then by attempting to substitute
+synonymous codons at each such site to remove it. Subsequences to avoid can be
+given in full extended IUPAC notation, so that AWGS can refer to AAGG, AAGC, ATGG,
+or ATGC.
 
-The optimiser then maps all the undesirable enzyme sites in each candidate and attempts to "splice" a hybrid sequence lacking all of these sites. When it is finished (hopefully with no remaining sites), it then performs a sanity check to ensure the codons still encode the specified amino sequence, and passes the candidate onto a dedicated site excision method.
+Using Your Own Tables
+---------------------
+If a codon usage table is not available, a JSON-formatted file containing a
+codon usage table can be specified. The format should be a JSON Object (akin to
+a python dict with the same syntax) containing single-letter amino keys, which
+point to dicts containing Codon keys, which each point to float values representing
+relative frequencies. Keys are all uppercase DNA, not RNA. For example:
+{"A": {"GCA": 0.15, "GCC": 0.18, "GCG": 0.51, "GCT": 0.15},
+ "C": {"TGC": 0.65, "TGT": 0.35}...}
 
-In this method, the candidate is again searched for target enzyme sites; these might remain from splicing, or may have been created accidentally at splice junctions. This method attempts to resolve enzyme sites by generating permuations for each detected site, and randomly selecting a permutation that doesn't introduce new sites into the codon list.
-
-At present, selection of replacement codons is entirely random; a planned feature is a frequency evaluation and comparison to the desired codon frequency table, with preference being shown to replacement codons that bring the candidate codon list closer to the desired frequency spread.
-
-## Advantages
-* This script is Free/Libre Open Source Software, and appears to be the first FLOSS script to address this method of codon optimisation.
-* This approach allows you to rapidly exclude degenerate sites while optimising an RNA sequence for a given amino acid sequence.
-* This script can parse degenerate IUPAC sequences for sites to exclude (which are given as DNA sequences, rather than RNA).
-* This script comes with an enzyme profile picker which (while very dumb) makes it easy to add sites for most known restriction enzymes from an extensive master list.
-* With the right frequency tables, it is thought that this approach can offer the best translation efficiencies currently achievable by publicly disclosed means.
-* This object/script is portable to other applications, for example mobile apps though Android Scripting Layer, webapps through CherryPy, or chat bots through python programs such as Phenny.
-
-## Disadvantages
-* This script only supports FASTA files at present.
-* This script currently has no regard for the original translation speed of the wild gene. It is now known that some proteins require "poorly adapted" codons at certain locations in order to slow down translation, allowing proper folding of the protein structure before further amino acid addition. With this script, no such adaptations will be respected, and some rare proteins may therefore suffer.
-* This script has no frequency analysis routines at present, and so it is left to the user to ensure that statistical fluke does not lead to a terribly "optimised" sequence. Frequency analysis is a desired feature in future revisions of the code. At the very least, a verbose-mode printout at the end listing desired codon frequencies versus delivered frequencies would be helpful.
-* This script requires codon tables to be provided in a custom-build JSON format. While very simple, this necessitates converting a desired codon table in one of the many hard-to-parse formats in widespread use into the JSON format used by this script. Also, this script uses codon frequencies relative to synonymous codons (that is, if an amino acid is encoded by two codons, and they are used in an 80:20 ratio, the frequencies will be 0.8 and 0.2, respectively), whereas it is customary to use frequencies per 1000 codons in most frequency tables. This will also necessitate conversion. A helper script to automate this tedious process is another desired feature.
-* The default codon frequency table is derived from evidence based work, but only in part; the study in question didn't provide data on all codons, and so the "gaps" were filled in with the genome-wide codon frequencies for *E.coli K12*. This may be a bad decision, and perhaps someone knows better how to fill gaps in data such as this for optimal expression.
-
-## Unresolved Issues and Desired Features
-* Setting a minimum codon frequency above a certain threshold, which likely varies from table to table, will cause the script to fail.
-* A refactoring of the "map_excluded_sites" method to use regular expressions rather than straight lists of comparison substrings would avoid issues where the program might crash if given *highly* degenerate sequences like AGGANNNNNNNNNNWWWWWG, which would compute to no less than 33,554,432 substrings. The above could be represented by a regex as "AGGA[ACGT]{10}[AT]{5}G" and would require a lower memory footprint and likely less time to parse.
-
-## Credit Where It's Due
-* The master list of enzymes provided with the script for ease of exclusion profile creation is derived from NEB's REBASE database of Restriction Enzymes. It's provided in JSON format and may prove useful to others as such, but it wouldn't have been possible to compile without REBASE itself.
-* The empirical work that informed the creation of the default frequency table for *E.coli* is courtesy of Welch et al, 2009, who created libraries of artificial genes and used them to verify that expression was best predicted by using codons whose tRNAs remained charged under starvation conditions, rather than the most common codons in "highly expressed" or "constitutive" genes. I look forward to seeing similar work done in other common target species.
+To simplify this process, a utility script is included, "cud-to-pysplicer", which
+will accept a filename of a Codon Usage Database (CUD) frequency table and will
+translate this table to a pysplicer-format JSON table. It accepts an optional
+"-t" switch which specifies with codon table to use; it defaults to the "standard"
+table. Calling cut-to-pysplicer with the "--help" switch will print usage
+information and also a list of possible translation tables to specify.

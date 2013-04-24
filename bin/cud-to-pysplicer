@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+'''A utility script to ease import of CUD-formatted tables to PySplicer's JSON format.'''
+
+from pysplicer import translators
+from pysplicer import translationtables
+import argparse
+
+possible_tables = [x for x in translationtables.__dict__ if "table" not in x and "__" not in x]
+
+ArgP = argparse.ArgumentParser(
+    description="A utility script to ease import of CUD-formatted tables to PySplicer's JSON format.",
+    epilog='Possible table names to call: '+'; '.join(possible_tables))
+ArgP.add_argument("CUDtable",
+    help="Target file copied verbatim from Codon Usage Database at http://www.kazusa.or.jp/codon/")
+ArgP.add_argument("-t","--translation-table",default="table1",
+    help="Translation table to use. Defaults to standard code. Use '-h' to get list of 'pretty' names or call by number as 'tablex' or 'tablexx', e.g. 'table1'.")
+ArgP.add_argument("-o","--output",
+    help="Optional filename to save output to rather than printing to stdout.")
+
+args = ArgP.parse_args()
+
+translation_table = translationtables.__dict__[args.translation_table]["codons"]
+with open(args.CUDtable) as CUDTable:
+    pysp_table = translators.ReverseTranslator.from_cud_table(CUDTable.read().strip(),
+                                                translation_table=translation_table)
+if args.output:
+    with open(args.output,"w") as OutF:
+        OutF.write(pysp_table.export_table(indent=1))
+else:
+    print(pysp_table.export_table(indent=1))

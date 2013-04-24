@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+'''PySplicer 2: A pure-python codon optimisation engine using weighted-random selection with targeted pattern exclusion.
+by Cathal Garvey
+Released under the GNU Affero General Public License
+
+'''
+from pysplicer import DNAMapper
+from pysplicer import translators
+from pysplicer import CodonSplicer
+from pysplicer import CodonJuggler
+from pysplicer import sequtils
+from pysplicer import builtin_frequency_tables
+import argparse
+#import random
+import json
+
+ArgP = argparse.ArgumentParser(
+    description=("A pure-python codon optimisation engine using weighted-random"
+                 " selection with targeted pattern exclusion."),
+    epilog="by Cathal Garvey\nReleased under the GNU Affero General Public License.")
+ArgP.add_argument("seq",help="Amino acid string to process.")
+ArgP.add_argument("-e","--exclude",nargs="+",default=[],
+        help="IUPAC DNA patterns to (attempt to) exclude from output.")
+ArgP.add_argument("-r","--output-rna",action="store_true",
+        help="Output RNA rather than DNA after processing.")
+ArgP.add_argument("--exclude-file",type=argparse.FileType('r'),
+        help="A file containing additional IUPAC DNA patterns to exclude, one per line.")
+ArgP.add_argument("-m","--min-codon-frequency",type=float,default=0.0,
+        help="Frequency value (between 0 and 1) below which codons should be excluded from output.")
+ArgP.add_argument("-v","--verbose",action="store_true",default=False,
+        help="Output (lots) of internal processing data.")
+ArgP.add_argument("-s","--species",default="ecoli_optimal",
+        help="Name of species table to use, e.g. 'ecoli_optimal'.")
+ArgP.add_argument("-T","--table",
+        help="Filename of a JSON-formatted frequency table to use.")
+ArgP.add_argument("--avoid-ngg-span",type=int,default=15,
+        help="Number of leading codons in which to avoid NGG codons, default 15.")
+ArgP.add_argument("--heatmap",action="store_true",default=False,
+        help="Print frequencies of relative codon use for each codon at end.")
+ArgP.add_argument("--candidates",type=int,default=200,
+        help="Number of splice candidates to generate during each round of splicing. Default is 200.")
+#ArgP.add_argument("-S","--output-species",
+#        help="Print a list of available species tables to use.")
+args = ArgP.parse_args()
+
+# Get excludes from invocation and from file, if any.
+excludes = [x.strip().upper().replace("U","T") for x in args.exclude]
+if args.exclude_file:
+    for line in args.exclude_file:
+        excludes.append(line.strip().upper().replace("U","T"))
+    args.exclude_file.close()
+
+if args.table:
+    with open(args.table) as InFile:
+        table_to_use = json.load(InFile)
+elif args.species:
+    try:
+        table_to_use = builtin_frequency_tables.__dict__[args.species]
+    except KeyError:
+        raise KeyError("Could not find species table '"+args.species+\
+            "' - Available tables are: "+\
+            str(sorted(builtin_frequency_tables.__dict__.keys())))
+
+# Leader table for early NGG avoidance.
+leader_table = translators.ReverseTranslator(table_to_use, verbose=args.verbose)
+# These won't all be removed, usually; TGG is only codon for "W" in some tables,
+# for example. If verbose is on, you'll see messages saying so..
+leader_table.remove_codon("TGG")
+leader_table.remove_codon("AGG")
+leader_table.remove_codon("GGG")
+leader_table.remove_codon("CGG")
+leader_table.set_min_frequency(args.min_codon_frequency)
+
+translationtable = translators.ReverseTranslator(table_to_use, verbose=args.verbose)
+translationtable.set_min_frequency(args.min_codon_frequency)
+
+# A structure-mapper for identifying and removing unwanted secondary structures.
+# At present, this is super-inefficient, and *only* removes fairly simple hairpins.
+Structure_Mapper   = DNAMapper.HairpinMaper()
+
+mapper = DNAMapper.DNAMapper(excludes, structure_mapper=Structure_Mapper.map_hairpins, verbose=args.verbose)
+Subber = CodonJuggler.Substitutor(table=translationtable, mapper=mapper, verbose=args.verbose)
+
+# Iterate/Alternate between splicing large numbers of weighted-randomly generated
+# candidates and trying to remove troublesome codons by substitution. If this doesn't
+# work out first-time around, submit the best effort of prior round(s) to the next
+# set of splice-candidates. Do this maximum 3 times.
+def optimise_chunk(seq, localmapper, localtable, localsubber):
+    prior_efforts = []
+    for i in range(0,3):
+        if args.verbose:
+            print("Attempt ",i,"/3 - Generating splice candidates (plus any",
+                  " prior good results) and optimising..",sep='')
+        spliced_codon_list = CodonSplicer.splice_aminos_to_codons(seq, localtable,
+                                    localmapper, args.candidates, prior_efforts, args.verbose)
+        scrubbed_codons = localsubber.remove_mapped(spliced_codon_list)
+        if not localmapper.codon_indices(scrubbed_codons):
+            break
+        prior_efforts.append(scrubbed_codons)
+    return scrubbed_codons
+
+# First do leader codons:
+lead_seq = optimise_chunk(args.seq[:args.avoid_ngg_span], mapper, leader_table, Subber)
+# And latter:
+latter_seq = optimise_chunk(args.seq[args.avoid_ngg_span:], mapper, translationtable, Subber)
+# Now join and fix, without reverting to NGG codons: use leader-table.
+# If the "main" table wasn't useful resolving mapped issues in the latter end of
+# the sequence, then the leader table will be less useful. that is to say, no
+# changes outside the splice junction should occur, as all options are already
+# exhausted for this codon table.
+lead_junction_subber = CodonJuggler.Substitutor(table=leader_table, mapper=mapper, verbose=args.verbose)
+final = lead_junction_subber.remove_mapped(lead_seq + latter_seq)
+finalseq = ''.join(final)
+if args.output_rna: finalseq = finalseq.replace("T","U")
+
+if args.verbose:
+    print("Final codon list:",final)
+    print("Translates to:",translationtable.for_table.translate_codon_list_to_str(final))
+if args.verbose or args.heatmap:
+    print("Heatmap:\t\t",'-'.join([str(int(x*100)).zfill(2) for x in translationtable.heat_map(final)]))
+print(finalseq)
