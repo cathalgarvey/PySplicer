@@ -76,7 +76,8 @@ translationtable.set_min_frequency(args.min_codon_frequency)
 
 # A structure-mapper for identifying and removing unwanted secondary structures.
 # At present, this is super-inefficient, and *only* removes fairly simple hairpins.
-Structure_Mapper   = DNAMapper.HairpinMaper()
+# HairpinMapper init args: (self, min_hairpin=5, endnum=3, min_score=10, max_loop=6, verbose=False):
+Structure_Mapper   = DNAMapper.HairpinMapper(verbose=args.verbose)
 
 mapper = DNAMapper.DNAMapper(excludes, structure_mapper=Structure_Mapper.map_hairpins, verbose=args.verbose)
 Subber = CodonJuggler.Substitutor(table=translationtable, mapper=mapper, verbose=args.verbose)

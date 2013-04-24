@@ -183,12 +183,15 @@ class HairpinMapper:
                  ("U","G"):1,
                  }
 
-    def __init__(self, min_hairpin=5, endnum=3, min_score=10, max_loop=6, debug=False):
+    def __init__(self, min_hairpin=5, endnum=3, min_score=10, max_loop=6, verbose=False):
         self.min_hairpin = min_hairpin
         self.endnum = endnum
         self.min_score = min_score
         self.max_loop = max_loop
-        self.debug = debug
+        self.verbose = verbose
+
+    def verbose_msg(self, *args, **kwargs):
+        if self.verbose: print(*args, **kwargs)
 
     def bp(self, l,m):
         if m in self.bpdict.get(l,''): return True
@@ -211,19 +214,19 @@ class HairpinMapper:
         try:
             while True:
                 if self.bp(seq[r_init-span], seq[f_init+span]):
-                    if self.debug: print("Extending contig..")
+                    self.verbose_msg("Extending contig..")
                     bps_in_contig.append((seq[r_init-span],seq[f_init+span]))
                     span += 1
                 else:
                     break
         except IndexError:
             score = self._score_contig(bps_in_contig)
-            if self.debug: print("Broken by indexerror, score is:",score)
+            self.verbose_msg("Broken by indexerror, score is:",score)
             return span, r_init+1, f_init, score, bps_in_contig
         score = self._score_contig(bps_in_contig)
         # Returns span and init points so method can be used with anonymous inputs
         # and extract the one that worked with max().
-        if self.debug: print("Final score is:",score)
+        self.verbose_msg("Final score is:",score)
         # Increment r_init by one because usual string usage after this method
         # will involve slicing rather than specific indexing, and not doing so
         # gives the incorrect index for dictionary indexing and manual lookup.
@@ -262,7 +265,7 @@ class HairpinMapper:
                 empty_span += 1
                 r_current -= 1
                 f_current += 1
-        if self.debug: print("Final hairpin:",found_hairpin)
+        self.verbose_msg("Final hairpin:",found_hairpin)
         return found_hairpin
 
     def map_hairpins(self, seq_to_map, *args, **kwargs):
@@ -281,12 +284,13 @@ class HairpinMapper:
                     # This returns a "patterns" key so as to be drop-in compatible with DNAMapper.
                     found_hairpins[hp_begins] = {"span":hp_span, "score":score, "patterns":[], "hairpin":this_hp}
                 else:
-                    if self.debug: print("Hairpin at index",hp_begins,
+                    self.verbose_msg("Hairpin at index",hp_begins,
                         "already in dict, but should not be a duplicate?\nDict contains:",
                         found_hairpins[hp_begins], "\nNew Entry:", this_hp)
-            elif self.debug:
-                print("Hairpin at index",hp_begins,"rejected as its score of",score,
+            else:
+                self.verbose_msg("Hairpin at index",hp_begins,"rejected as its score of",score,
                     "is below the minimum threshold of",self.min_score,":",this_hp)
+
         for key in sorted(found_hairpins.keys()):
             # Discard keys that are so early they can only have been accepted by
             # rolling back through the sequence, not allowed unless sequence is
