@@ -11,21 +11,22 @@ from pysplicer import CodonJuggler
 from pysplicer import sequtils
 from pysplicer import builtin_frequency_tables
 import argparse
-#import random
+import sys
 import json
 
 ArgP = argparse.ArgumentParser(
     description=("A pure-python codon optimisation engine using weighted-random"
                  " selection with targeted pattern exclusion."),
     epilog="by Cathal Garvey\nReleased under the GNU Affero General Public License.")
-ArgP.add_argument("seq",help="Amino acid string to process.")
+ArgP.add_argument("-i", "--input-sequence", type=argparse.FileType('r'),default=sys.stdin,
+        help="Amino acid containing file to process. Defaults to standard input.")
 ArgP.add_argument("-e","--exclude",nargs="+",default=[],
         help="IUPAC DNA patterns to (attempt to) exclude from output.")
 ArgP.add_argument("-r","--output-rna",action="store_true",
         help="Output RNA rather than DNA after processing.")
 ArgP.add_argument("--exclude-file",type=argparse.FileType('r'),
         help="A file containing additional IUPAC DNA patterns to exclude, one per line.")
-ArgP.add_argument("-m","--min-codon-frequency",type=float,default=0.0,
+ArgP.add_argument("-m","--min-codon-frequency",type=float,default=0.025,
         help="Frequency value (between 0 and 1) below which codons should be excluded from output.")
 ArgP.add_argument("-v","--verbose",action="store_true",default=False,
         help="Output (lots) of internal processing data.")
@@ -100,10 +101,17 @@ def optimise_chunk(seq, localmapper, localtable, localsubber):
         prior_efforts.append(scrubbed_codons)
     return scrubbed_codons
 
+# get the sequence to convert:
+try:
+    with args.input_sequence as InputSequence:
+        seq = InputSequence.read().strip()
+except KeyboardInterrupt:
+    print("\nKeyboardInterrupt detected. Aborting pysplicer.")
+    sys.exit(1)
 # First do leader codons:
-lead_seq = optimise_chunk(args.seq[:args.avoid_ngg_span], mapper, leader_table, Subber)
+lead_seq = optimise_chunk(seq[:args.avoid_ngg_span], mapper, leader_table, Subber)
 # And latter:
-latter_seq = optimise_chunk(args.seq[args.avoid_ngg_span:], mapper, translationtable, Subber)
+latter_seq = optimise_chunk(seq[args.avoid_ngg_span:], mapper, translationtable, Subber)
 # Now join and fix, without reverting to NGG codons: use leader-table.
 # If the "main" table wasn't useful resolving mapped issues in the latter end of
 # the sequence, then the leader table will be less useful. that is to say, no
