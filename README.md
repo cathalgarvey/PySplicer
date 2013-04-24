@@ -45,6 +45,14 @@ synonymous codons at each such site to remove it. Subsequences to avoid can be
 given in full extended IUPAC notation, so that AWGS can refer to AAGG, AAGC, ATGG,
 or ATGC.
 
+PySplicer also maps simple hairpin structures and attempts to remove these.
+However, this procress is extremely intensive (DNA/RNA structure prediction
+is NP-Hard, and my implementation is pretty dumb), so expect PySplicer to be
+very, very slow at optimising sequences due to this. However, this structure
+avoidance/removal process can have a significant and positive impact on
+successful gene expression, particularly when structures in the 5' UTR or the
+first few codons of a CDS are eliminated.
+
 Using Your Own Tables
 ---------------------
 If a codon usage table is not available, a JSON-formatted file containing a
