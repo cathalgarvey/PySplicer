@@ -43,7 +43,8 @@ it attempts to accomplish firstly be generating large numbers of candidates and
 walking through them to avoid such sites, and then by attempting to substitute
 synonymous codons at each such site to remove it. Subsequences to avoid can be
 given in full extended IUPAC notation, so that AWGS can refer to AAGG, AAGC, ATGG,
-or ATGC.
+or ATGC. It *may* be relevant to note that all sequences are converted to DNA
+internally prior to use for the sake of internal consistency,
 
 PySplicer also maps simple hairpin structures and attempts to remove these.
 However, this procress is extremely intensive (DNA/RNA structure prediction

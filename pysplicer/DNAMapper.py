@@ -172,24 +172,40 @@ class DNAMapper:
         return codonindices
 
 class HairpinMapper:
-    bpdict = {'A':'UT','C':'G','G':'UC','U':'GA','T':'A'}
-    bp_scores = {
-                 ("A","U"):2,
-                 ("U","A"):2,
-                 ("A","T"):2,
-                 ("T","A"):2,
-                 ("G","C"):3,
-                 ("C","G"):3,
-                 ("G","U"):1,
-                 ("U","G"):1,
-                 }
+    _rna_as_dna_bpdict =    {'A':'UT','C':'G','G':'UTC','U':'GA','T':'GA'}
+    _real_bpdict =          {'A':'UT','C':'G','G':'C','U':'A','T':'A'}
+    _real_bp_scores = { ("A","U"):2, ("U","A"):2, ("A","T"):2, ("T","A"):2,
+                        ("G","C"):3, ("C","G"):3, ("G","U"):1, ("U","G"):1 }
+    _rna_as_dna_bp_scores = {
+                 ("A","U"):2, ("U","A"):2, ("A","T"):2, ("T","A"):2,
+                 ("G","C"):3, ("C","G"):3,
+                 ("G","U"):1, ("U","G"):1, ("G","T"):1, ("T","G"):1 }
 
-    def __init__(self, min_hairpin=5, endnum=3, min_score=10, max_loop=6, verbose=False):
+    def __init__(self, min_hairpin=5, endnum=3, min_score=10, max_loop=6, allow_gt=True, verbose=False):
+        '''min_hairpin is the minimum continuous run of nucleotides accepted as a stem in a composite hairpin.
+        endnum is the number of consecutive non-bonding nucleotides after which to abort seeking any/more stems.
+        min_score is the minimum total score of base pairs in a composite hairpin.
+        max_loop is the maximum size of the apical loop in a simple hairpin, as opposed to bulges within the stem.
+        allow_gt is whether to consider "gt" basepairs equivalent to "gu"; default is True, as
+            pysplicer converts all RNA inputs to DNA internally, and PySplicer is primarily for
+            creating optimised RNA CDS sequences so G=U basepairs are relevant.
+        verbose is whether to print information on initialisation or progress to stdout.'''
+        self.verbose = verbose
+        self.verbose_msg("Initialising HairpinMapper.")
         self.min_hairpin = min_hairpin
         self.endnum = endnum
         self.min_score = min_score
         self.max_loop = max_loop
-        self.verbose = verbose
+        if allow_gt:
+            self.verbose_msg("Considering G=T basepairs as equivalent to G=U;",
+                "this is the norm for DNA that will be transcribed to RNA.")
+            self.bp_scores = self._rna_as_dna_bp_scores
+            self.bpdict = self._rna_as_dna_bpdict
+        else:
+            self.verbose_msg("Not considering G=T basepairs as equivalent to G=U;",
+                "this is appropriate for sequences that will not be transcribed to RNA.")
+            self.bp_scores = self._real_bp_scores
+            self.bpdict = self._real_bpdict
 
     def verbose_msg(self, *args, **kwargs):
         if self.verbose: print(*args, **kwargs)
