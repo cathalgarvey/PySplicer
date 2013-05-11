@@ -53,6 +53,12 @@ ArgP.add_argument("--enrich-adenine", action="store_true", default=False,
 
 ArgP.add_argument("--ignore-structure",action="store_true", default=False,
         help="Skip searching for and correcting minor secondary structures (a very time-consuming operation)")
+        
+ArgP.add_argument("--use-vienna", action="store_true", default=False,
+        help="If the ViennaRNA software suite is found, use that instead of the crude inbuilt hairpin mapper.")
+
+ArgP.add_argument("--max-free-energy-per-n", type=float, default = -0.35,
+        help="If using ViennaRNA, this is a cutoff threshold by which to ignore structures with too low a delta-G to worry about.")
 
 ArgP.add_argument("--heatmap",action="store_true",default=False,
         help="Print frequencies of relative codon use for each codon at end.")
@@ -112,13 +118,18 @@ translationtable.set_min_frequency(args.min_codon_frequency)
 # A structure-mapper for identifying and removing unwanted secondary structures.
 # At present, this is super-inefficient, and *only* removes fairly simple hairpins.
 # HairpinMapper init args: (self, min_hairpin=5, endnum=3, min_score=10, max_loop=6, verbose=False):
-Structure_Mapper   = DNAMapper.HairpinMapper(verbose=args.verbose)
+if args.use_vienna:
+    from pysplicer import RNAfoldWrap
+    Structure_Mapper = lambda seq: RNAfoldWrap.map_structures(seq, args.max_free_energy_per_n)
+else:
+    _Structure_Mapper   = DNAMapper.HairpinMapper(verbose=args.verbose)
+    Structure_Mapper = _Structure_Mapper.map_hairpins
 
 # Now, either use or don't use structure-mapper as part of overall mapper!
 if args.ignore_structure:
     mapper = DNAMapper.DNAMapper(excludes, verbose=args.verbose)
 else:
-    mapper = DNAMapper.DNAMapper(excludes, structure_mapper=Structure_Mapper.map_hairpins, verbose=args.verbose)
+    mapper = DNAMapper.DNAMapper(excludes, structure_mapper=Structure_Mapper, verbose=args.verbose)
 
 Subber = CodonJuggler.Substitutor(table=translationtable, mapper=mapper, verbose=args.verbose)
 

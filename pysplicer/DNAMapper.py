@@ -92,6 +92,7 @@ class DNAMapper:
             dict_locus = results.setdefault(structure_locus, {})
             dict_locus['span'] = max(dict_locus.get("span",0), structure_d['span'])
             hairpin_r_nucleotides = []
+            # Below code uses dict.get, so it's OK for modules to not implement this.
             for hairpin_span in structure_d.get('hairpin',[]):
                 # each subunit of "hairpin" key is a tuple of (span, r_start, f_start, score, [(basepair),(basepair)])
                 if not hairpin_span: continue
@@ -353,6 +354,8 @@ class HairpinMapper:
                 out_string_lines[2].append(x[1])
             prior_contig_ends = (hp[1],hp[2])
         return '\n'.join([''.join(x).rstrip(" .") for x in out_string_lines])
+
+
 
 def tests():
     print("Running tests on DNAMapper.")
