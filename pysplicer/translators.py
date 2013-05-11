@@ -337,16 +337,24 @@ class ReverseTranslator:
         mRNA, which is one simple strategy used to avoid secondary structures.'''
         base = base.upper().replace("U","T")
         for amino in self.table:
+            if amino == "*": continue
+            self.verbose_msg("Favouring base",base,"for amino",amino)
             # Get list of codons and sort by occurrance of favoured base.
             codons = list(self.table[amino].keys())
             sorted(codons, key=lambda s: s.count(base))
             # Boost the first codon in this ordered list that is above minimum_f.
+            if len(codons) == 1: continue
             for codon in codons:
+                if base not in codon: continue
                 current_frequency = self.table[amino][codon]
                 if current_frequency < minimum_f:
+                    self.verbose_msg("Skipping",codon,
+                        "as frequency is below threshold:",
+                        "{0} < {1}".format(current_frequency, minimum_f))
                     continue
                 else:
-                    self.edit_codon(codon, min(1, current_frequency + bonus))
+                    self.edit_codon(codon, min(0.99, current_frequency + bonus))
+                    self.verbose_msg("Boosted codon",codon,"by {}.".format(bonus))
                     break
 
     def heat_map(self, sequence, frame=0):
