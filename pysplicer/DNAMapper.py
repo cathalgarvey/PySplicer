@@ -181,7 +181,7 @@ class HairpinMapper:
                  ("G","C"):3, ("C","G"):3,
                  ("G","U"):1, ("U","G"):1, ("G","T"):1, ("T","G"):1 }
 
-    def __init__(self, min_hairpin=5, endnum=3, min_score=10, max_loop=6, allow_gt=True, verbose=False):
+    def __init__(self, min_hairpin=3, endnum=3, min_score=10, max_loop=10, allow_gt=True, verbose=False):
         '''min_hairpin is the minimum continuous run of nucleotides accepted as a stem in a composite hairpin.
         endnum is the number of consecutive non-bonding nucleotides after which to abort seeking any/more stems.
         min_score is the minimum total score of base pairs in a composite hairpin.

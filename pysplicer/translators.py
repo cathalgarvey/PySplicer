@@ -254,9 +254,10 @@ class ReverseTranslator:
             renamed_table[newcodon] = codon_table[codon]
         codon_table = renamed_table
         # Get current total:
-        total_input_frequencies = 0.0
-        for codon in codon_table.keys():
-            total_input_frequencies += codon_table[codon]
+        total_input_frequencies = sum(codon_table.values())
+#        total_input_frequencies = 0.0
+#        for codon in codon_table.keys():
+#            total_input_frequencies += codon_table[codon]
         # Map new codon table with normalised values:
         total_output_frequencies = 0.0
         output_table = {}
@@ -274,19 +275,39 @@ class ReverseTranslator:
             raise ValueError("Adjusted frequency total is outside accepted error: "+\
                 str(total_output_frequencies)+", with table: "+str(output_table))
         return output_table
+        
+    def edit_codon(self, codon, frequency):
+        'Manually set a codon frequency and automatically readjust synonymous codon frequencies.'
+        if not 0 < frequency < 1:
+            raise ValueError("Frequency to set manually must be between 0 and 1.")
+        codon = codon.upper().replace("U","T")
+        amino_id = self.for_table.translate_codon(codon)
+        if amino_id == None:
+            raise ValueError("Codon '"+codon+"' not found.")
+        amino_set = self.table[amino_id]
+        new_set = {codon:frequency}
+        # First, normalise all the codons besides the one to be set:
+        partial_set = {}
+        for sub_codon in amino_set:
+            if codon == sub_codon: continue
+            partial_set[sub_codon] = amino_set[sub_codon]
+        partial_set = self.normalise_codon_frequencies(partial_set)
+        # Then, add each element of partial_set to new_set, adjusting the frequency
+        # to fit into the remaining frequency space (1 - desired_codon_frequency).
+        for sub_codon in partial_set:
+            new_set[sub_codon] = partial_set[sub_codon] * (1 - frequency)
+        self.table[amino_id] = new_set
 
     def remove_codon(self, codon):
         'Given a codon, find it, remove it, and re-normalise the remaining set.'
         codon = codon.upper().replace("U","T")
-        amino_set = {}
-        for amino in self.table:
-            if codon in self.table[amino]:
-                if len(self.table[amino].keys()) == 1:
-                    self.verbose_msg("Cannot remove codon",codon,"from set, as it is only codon for amino",amino+".")
-                    return None
-                amino_id = amino
-                amino_set = self.table[amino]
-        if not amino_set: raise ValueError("Could not find codon: "+codon)
+        amino_id = self.for_table.translate_codon(codon)
+        if amino_id == None:
+            raise ValueError("Codon '"+codon+"' not found.")
+        amino_set = self.table[amino_id]
+        if len(amino_set) == 1:
+            self.verbose_msg("Cannot remove codon",codon,"from set, as it is only codon for amino",amino_id+".")
+            return None
         amino_set[codon] = 0.0
         amino_set = self.normalise_codon_frequencies(amino_set)
         self.table[amino_id] = amino_set
@@ -306,6 +327,27 @@ class ReverseTranslator:
         # then, remove each in turn
         for codon in hitlist:
             self.remove_codon(codon)
+
+    def favour_base(self, base, bonus = 0.15, minimum_f = 0.15):
+        '''Allows a table to be re-written to favour codons rich in a specified base.
+        bonus is the frequency to boost chosen codons by.
+        minimum_f is the minimum frequency below which a codon will not be
+        considered viable for boosting.
+        This operation was written to be used in Adenine-enrichment of early
+        mRNA, which is one simple strategy used to avoid secondary structures.'''
+        base = base.upper().replace("U","T")
+        for amino in self.table:
+            # Get list of codons and sort by occurrance of favoured base.
+            codons = list(self.table[amino].keys())
+            sorted(codons, key=lambda s: s.count(base))
+            # Boost the first codon in this ordered list that is above minimum_f.
+            for codon in codons:
+                current_frequency = self.table[amino][codon]
+                if current_frequency < minimum_f:
+                    continue
+                else:
+                    self.edit_codon(codon, min(1, current_frequency + bonus))
+                    break
 
     def heat_map(self, sequence, frame=0):
         '''Returns an iterator for codons in sequence[frame:] that yields (codon, frequency).

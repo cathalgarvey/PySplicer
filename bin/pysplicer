@@ -15,31 +15,57 @@ import sys
 import json
 
 ArgP = argparse.ArgumentParser(
-    description=("A pure-python codon optimisation engine using weighted-random"
-                 " selection with targeted pattern exclusion."),
+    description=("A pure-python3 codon optimisation engine using weighted-random"
+                 " selection with targeted pattern exclusion and basic secondary structure avoidance."),
     epilog="by Cathal Garvey\nReleased under the GNU Affero General Public License.")
 ArgP.add_argument("-i", "--input-sequence", type=argparse.FileType('r'),default=sys.stdin,
         help="Amino acid containing file to process. Defaults to standard input.")
+        
 ArgP.add_argument("-e","--exclude",nargs="+",default=[],
         help="IUPAC DNA patterns to (attempt to) exclude from output.")
+
+ArgP.add_argument("-E","--exclude-enzymes",nargs="+",
+        help="Names of restriction enzymes to (attempt to) exclude from output.")
+
 ArgP.add_argument("-r","--output-rna",action="store_true",
         help="Output RNA rather than DNA after processing.")
+
 ArgP.add_argument("--exclude-file",type=argparse.FileType('r'),
         help="A file containing additional IUPAC DNA patterns to exclude, one per line.")
+
 ArgP.add_argument("-m","--min-codon-frequency",type=float,default=0.025,
         help="Frequency value (between 0 and 1) below which codons should be excluded from output.")
+
 ArgP.add_argument("-v","--verbose",action="store_true",default=False,
-        help="Output (lots) of internal processing data.")
+        help="Output (lots) of internal processing data. Optimisation will be slower with this option.")
+
 ArgP.add_argument("-s","--species",default="ecoli_optimal",
         help="Name of species table to use, e.g. 'ecoli_optimal'.")
+
 ArgP.add_argument("-T","--table",
         help="Filename of a JSON-formatted frequency table to use.")
+
 ArgP.add_argument("--avoid-ngg-span",type=int,default=15,
         help="Number of leading codons in which to avoid NGG codons, default 15.")
+        
+ArgP.add_argument("--enrich-adenine", action="store_true", default=False,
+        help="As a crude way to help avoid early secondary structures, favour adenine-rich early codons.")
+
+ArgP.add_argument("--ignore-structure",action="store_true", default=False,
+        help="Skip searching for and correcting minor secondary structures (a very time-consuming operation)")
+
 ArgP.add_argument("--heatmap",action="store_true",default=False,
         help="Print frequencies of relative codon use for each codon at end.")
+
 ArgP.add_argument("--candidates",type=int,default=200,
         help="Number of splice candidates to generate during each round of splicing. Default is 200.")
+
+ArgP.add_argument("--fasta-title",type=str,
+        help="Output as a FASTA block with this title.")
+
+ArgP.add_argument("-w","--wrap",type=int,
+        help="Wrap output sequence to this many characters per line.")
+
 #ArgP.add_argument("-S","--output-species",
 #        help="Print a list of available species tables to use.")
 args = ArgP.parse_args()
@@ -50,6 +76,12 @@ if args.exclude_file:
     for line in args.exclude_file:
         excludes.append(line.strip().upper().replace("U","T"))
     args.exclude_file.close()
+
+if args.exclude_enzymes:
+    from pysplicer import enzyme_lib
+    # For each name, converts to lowercase, seeks in builtin enzyme list.
+    # Prints to stderr if not found and seeks next enzyme.
+    excludes.extend(enzyme_lib.get_target_sites(args.exclude_enzymes))
 
 if args.table:
     with open(args.table) as InFile:
@@ -70,6 +102,8 @@ leader_table.remove_codon("TGG")
 leader_table.remove_codon("AGG")
 leader_table.remove_codon("GGG")
 leader_table.remove_codon("CGG")
+if args.enrich_adenine:
+    leader_table.favour_base("A")
 leader_table.set_min_frequency(args.min_codon_frequency)
 
 translationtable = translators.ReverseTranslator(table_to_use, verbose=args.verbose)
@@ -80,7 +114,12 @@ translationtable.set_min_frequency(args.min_codon_frequency)
 # HairpinMapper init args: (self, min_hairpin=5, endnum=3, min_score=10, max_loop=6, verbose=False):
 Structure_Mapper   = DNAMapper.HairpinMapper(verbose=args.verbose)
 
-mapper = DNAMapper.DNAMapper(excludes, structure_mapper=Structure_Mapper.map_hairpins, verbose=args.verbose)
+# Now, either use or don't use structure-mapper as part of overall mapper!
+if args.ignore_structure:
+    mapper = DNAMapper.DNAMapper(excludes, verbose=args.verbose)
+else:
+    mapper = DNAMapper.DNAMapper(excludes, structure_mapper=Structure_Mapper.map_hairpins, verbose=args.verbose)
+
 Subber = CodonJuggler.Substitutor(table=translationtable, mapper=mapper, verbose=args.verbose)
 
 # Iterate/Alternate between splicing large numbers of weighted-randomly generated
@@ -104,17 +143,39 @@ def optimise_chunk(seq, localmapper, localtable, localsubber):
 # get the sequence to convert:
 try:
     with args.input_sequence as InputSequence:
-        seq = InputSequence.read().strip()
+        seq_stream = []
+        hitcontent = False
+        for line in InputSequence:
+            line = line.strip()
+            if not line:
+                if not hitcontent:
+                    # Don't quit if there is leading whitespace in the file.
+                    continue
+                else:
+                    # If content has been reached and finished with, break
+                    # at first empty line (i.e. don't concatenate a multifasta
+                    # file into one long sequence, just use first block.)
+                    break
+            else: # i.e. line has contents
+                if line[0] not in ">;#":
+                    # Ignore comments and titles.
+                    # When meaningful non-comment/title/whitespace content is
+                    # hit, mark hitcontent True. This allows starting comment
+                    # matter and clarifying whitespace prior to initial block.
+                    seq_stream.append(line)
+                    hitcontent = True
+        seq = ''.join(seq_stream).upper()
 except KeyboardInterrupt:
     print("\nKeyboardInterrupt detected. Aborting pysplicer.")
     sys.exit(1)
+
 # First do leader codons:
 lead_seq = optimise_chunk(seq[:args.avoid_ngg_span], mapper, leader_table, Subber)
 # And latter:
 latter_seq = optimise_chunk(seq[args.avoid_ngg_span:], mapper, translationtable, Subber)
 # Now join and fix, without reverting to NGG codons: use leader-table.
 # If the "main" table wasn't useful resolving mapped issues in the latter end of
-# the sequence, then the leader table will be less useful. that is to say, no
+# the sequence, then the leader table will be less useful. That is to say, no
 # changes outside the splice junction should occur, as all options are already
 # exhausted for this codon table.
 lead_junction_subber = CodonJuggler.Substitutor(table=leader_table, mapper=mapper, verbose=args.verbose)
@@ -127,4 +188,9 @@ if args.verbose:
     print("Translates to:",translationtable.for_table.translate_codon_list_to_str(final))
 if args.verbose or args.heatmap:
     print("Heatmap:\t\t",'-'.join([str(int(x*100)).zfill(2) for x in translationtable.heat_map(final)]))
-print(finalseq)
+
+if args.fasta_title: print(">",args.fasta_title)
+if args.wrap:
+    print("\n".join(sequtils._chunks(finalseq, args.wrap)))
+else:
+    print(finalseq)

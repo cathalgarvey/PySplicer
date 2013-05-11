@@ -208,18 +208,20 @@ class bioseq(str):
         output_seq = ''.join(output_char_list)
         if strip_wildcards:
             output_seq = output_seq.strip("N-.")
-        return output_seq
+        # This was returning only output_seq, why not classwrap it here?
+        return cls(output_seq)
 
     @classmethod
     def fromstring(cls, sequence, strict=False):
         sequence = sequence.upper()
-        if strict: return cls(cls._iupac_nuc_only(sequence))
+        if strict: return cls._iupac_nuc_only(sequence)
         return cls(sequence)
 
     def iupac_nuc_only(self, *args):
         '''Prunes only legal IUPAC DNA/RNA characters from a given string and returns those.
         If strip_wildcards is set to True, this will strip "-", "." or "N" from ends.'''
-        return bioseq(self._iupac_nuc_only(self, *args))
+        #return bioseq(self._iupac_nuc_only(self, *args))
+        return self._iupac_nuc_only(self, *args)
 
     def infer_type(self):
         'Calls deduce_alphabet on self, returns same values: dna/rna/aminos/hybrid_nuc.'
