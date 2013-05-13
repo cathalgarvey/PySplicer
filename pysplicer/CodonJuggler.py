@@ -18,7 +18,8 @@ class Substitutor:
         if self.verbose: print(*args, **kwargs)
 
     def shuffle_codons(self, codon_list, avoids=[]):
-        '''Given a codon list and a set of synonymous codon lists to avoid, return first non-avoided one.'''
+        '''Given a codon list and a set of synonymous codon lists to avoid,
+        return first non-avoided one.'''
         # This method inverts codon_list so that iterator cycles primarily on the
         # *first* codon and not the last, which may prevent wasting lots of cycles
         # on codon permutations far from the most affected codons at the start.

@@ -115,6 +115,9 @@ def structure_occludes(structure, start, end, occlusion_ratio = 0.5):
         return True
     return False
 
+# Deprecate and replace: this isn't really a very sensible system, as structures
+# from multiple suboptimal structures are considered which may have no likeness
+# or comparability.
 def map_structures(some_seq, min_energy, prioritise_5prime = True):
     '''Designed to return useful information to PySplicer so it can attempt to
     modify key parts of stable structures to reduce stability. Returns a dictionary
@@ -135,3 +138,24 @@ def map_structures(some_seq, min_energy, prioritise_5prime = True):
             continue
         results[key_n] = {'span':span}
     return results
+
+def calc_fe(some_seq):
+    if isinstance(some_seq, list):
+        return RNAfold(''.join(some_seq)).folding.energy
+    else:
+        return RNAfold(some_seq).folding.energy
+
+def sort_by_fe(seq_list):
+    return sorted(seq_list, key = calc_fe)
+    
+def map_structure(some_seq, min_energy_to_consider = -9):
+    '''Returns the apparent key point of a structure, if that structure's free-
+    energy is greater (in absolute terms) than abs(min_energy_to_consider).'''
+    seq_struct = RNAfold(some_seq)
+    if abs(seq_struct.folding.energy) >= abs(min_energy_to_consider):
+        # Map "key" part of structure, returning a dict indexed by "main" structure
+        # and containing a "span" key.
+        start, span = find_key_structure(seq_struct.folding)
+        return {start:{"span":span}}
+    else:
+        return {}

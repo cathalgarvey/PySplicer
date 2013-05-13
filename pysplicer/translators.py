@@ -328,6 +328,24 @@ class ReverseTranslator:
         for codon in hitlist:
             self.remove_codon(codon)
 
+    def set_max_frequency(self, freq):
+        '''Sets all codons whose frequency is above "freq" to 0.0, and re-normalises.
+        This may be useful to create a translator for ribosomal delaying or pausing.
+        According to https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3188794 ; early
+        ribosomal "bottlenecks" can help avoid ribosomal collision/jamming and improve
+        translational efficiency.
+        It is advised not to set freq too low or too many codons will be excluded.'''
+        # Do this two-step to avoid editing-while-iterating bugs.
+        # First, id the codons below freq
+        hitlist = []
+        for amino in self.table.values():
+            for codon in amino:
+                if amino[codon] > freq:
+                    hitlist.append(codon)
+        # then, remove each in turn
+        for codon in hitlist:
+            self.remove_codon(codon)
+
     def favour_base(self, base, bonus = 0.15, minimum_f = 0.15):
         '''Allows a table to be re-written to favour codons rich in a specified base.
         bonus is the frequency to boost chosen codons by.

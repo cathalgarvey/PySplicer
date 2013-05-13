@@ -109,12 +109,26 @@ class Splicer:
             raise ValueError("Error occurred while verifying finished spliced-sequence: "+str(E))
         return new_codons
 
-def splice_aminos_to_codons(aminostring, table, mapper, attempts_number=50, suggestions = [], verbose=False):
+def splice_aminos_to_codons(aminostring, table, mapper, attempts_number=50,
+            suggestions = [], verbose=False, order_func=None, tweak_func=None):
     '''Creates attempts_number versions of aminostring using the given table,
-    then splices them to find one with minimal issues as determined by mapper.'''
+    then splices them to find one with minimal issues as determined by mapper.
+    If given an ordering function as order_func, sequences are ordered according
+    to this function prior to being spliced. As the first acceptable splice is
+    chosen in tie cases, this can lead to a mild preference for earlier sequences.
+    If tweak_func is given, it should be a function that, given a list of codon-lists,
+    returns a supplementary list of codon-lists with beneficial changes made.
+    These beneficial modifications are then given precedence over preceding list.'''
     splicer = Splicer(table, mapper, verbose)
     query_sequences = [table.get_codons(aminostring) for x in range(0,attempts_number)]
-    if suggestions: query_sequences + suggestions
+    # If possible to sort, then do so sort function can give mild priority to
+    # certain sequences.
+    if callable(order_func):
+        query_sequences = order_func(query_sequences)
+    # Put suggestions first so they get splicing priority.
+    if callable(tweak_func):
+        query_sequences = tweak_func(query_sequences) + query_sequences
+    if suggestions: query_sequences = suggestions + query_sequences
     return splicer.splice_sequences(query_sequences)
 
 def tests(aminos):
