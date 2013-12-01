@@ -4,19 +4,19 @@ by Cathal Garvey
 Released under the GNU Affero General Public License
 
 '''
-from pysplicer import DNAMapper
-from pysplicer import translators
-from pysplicer import CodonSplicer
-from pysplicer import CodonJuggler
-from pysplicer import sequtils
-from pysplicer import builtin_frequency_tables
-
+from pysplicer import main_utils
+#from pysplicer import DNAMapper
+#from pysplicer import translators
+#from pysplicer import CodonSplicer
+#from pysplicer import CodonJuggler
+#from pysplicer import sequtils
+#from pysplicer import builtin_frequency_tables
 # Won't work unless Vienna package is installed to path but importing does no harm:
-from pysplicer import RNAfoldWrap
+#from pysplicer import RNAfoldWrap
 
 import argparse
 import sys
-import json
+#import json
 
 ArgP = argparse.ArgumentParser(
     description=("A pure-python3 codon optimisation engine using weighted-random"
@@ -67,10 +67,6 @@ ArgP.add_argument("--use-vienna", action="store_true", default=False,
 ArgP.add_argument("--max-early-free-energy", type=float, default=6,
         help="If using ViennaRNA, this is the maximum free energy allowable for the first several codons (as specified in avoid-ngg-span option).")
 
-# Deprecate:
-#ArgP.add_argument("--max-free-energy-per-n", type=float, default = -0.22,
-#        help="If using ViennaRNA, this is a cutoff threshold by which to ignore structures with too low a delta-G to worry about.")
-
 ArgP.add_argument("--heatmap",action="store_true",default=False,
         help="Print frequencies of relative codon use for each codon at end.")
 
@@ -83,151 +79,6 @@ ArgP.add_argument("--fasta-title",type=str,
 ArgP.add_argument("-w","--wrap",type=int,default = 50,
         help="Wrap output sequence to this many characters per line.")
 
-#ArgP.add_argument("-S","--output-species",
-#        help="Print a list of available species tables to use.")
 args = ArgP.parse_args()
 
-# Get excludes from invocation and from file, if any.
-excludes = [x.strip().upper().replace("U","T") for x in args.exclude]
-if args.exclude_file:
-    for line in args.exclude_file:
-        line = line.strip()
-        # Allow empty lines and "#" delimited comments.
-        if not line:            continue
-        elif line[0] == "#":    continue
-        else:                   excludes.append(line.upper().replace("U","T"))
-    args.exclude_file.close()
-
-if args.exclude_enzymes:
-    from pysplicer import enzyme_lib
-    # For each name, converts to lowercase, seeks in builtin enzyme list.
-    # Prints to stderr if not found and seeks next enzyme.
-    excludes.extend(enzyme_lib.get_target_sites(args.exclude_enzymes))
-
-if args.table:
-    with open(args.table) as InFile:
-        table_to_use = json.load(InFile)
-elif args.species:
-    try:
-        table_to_use = builtin_frequency_tables.__dict__[args.species]
-    except KeyError:
-        raise KeyError("Could not find species table '"+args.species+\
-            "' - Available tables are: "+\
-            str(sorted(builtin_frequency_tables.__dict__.keys())))
-
-# Leader table for early NGG avoidance.
-leader_table = translators.ReverseTranslator(table_to_use, verbose=args.verbose)
-# These won't all be removed, usually; TGG is only codon for "W" in some tables,
-# for example. If verbose is on, you'll see messages saying so..
-leader_table.remove_codon("TGG")
-leader_table.remove_codon("AGG")
-leader_table.remove_codon("GGG")
-leader_table.remove_codon("CGG")
-leader_table.set_max_frequency(args.max_early_codon_frequency)
-if args.enrich_adenine:
-    leader_table.favour_base("A")
-# leader_table.set_min_frequency(args.min_codon_frequency)
-
-translationtable = translators.ReverseTranslator(table_to_use, verbose=args.verbose)
-translationtable.set_min_frequency(args.min_codon_frequency)
-
-# A structure-mapper for identifying and removing unwanted secondary structures.
-# At present, this is super-inefficient, and *only* removes fairly simple hairpins.
-# HairpinMapper init args: (self, min_hairpin=5, endnum=3, min_score=10, max_loop=6, verbose=False):
-if args.use_vienna:
-#    Structure_Mapper = lambda seq: RNAfoldWrap.map_structures(seq, args.max_free_energy_per_n)
-    Structure_Mapper = lambda seq: RNAfoldWrap.map_structure(seq, args.max_early_free_energy)
-else:
-    _Structure_Mapper   = DNAMapper.HairpinMapper(verbose=args.verbose)
-    Structure_Mapper = _Structure_Mapper.map_hairpins
-
-# Now, either use or don't use structure-mapper as part of overall mapper!
-struct_mapper = DNAMapper.DNAMapper(excludes, structure_mapper=Structure_Mapper, verbose=args.verbose)
-mapper = DNAMapper.DNAMapper(excludes, verbose=args.verbose)
-
-Struct_Subber = CodonJuggler.Substitutor(table=translationtable, mapper=struct_mapper, verbose=args.verbose)
-Subber = CodonJuggler.Substitutor(table=translationtable, mapper=mapper, verbose=args.verbose)
-
-# Iterate/Alternate between splicing large numbers of weighted-randomly generated
-# candidates and trying to remove troublesome codons by substitution. If this doesn't
-# work out first-time around, submit the best effort of prior round(s) to the next
-# set of splice-candidates. Do this maximum 3 times.
-def optimise_chunk(seq, localmapper, localtable, localsubber, local_use_vienna=False):
-    prior_efforts = []
-    for i in range(0,3):
-        if args.verbose:
-            print("Attempt ",i,"/3 - Generating splice candidates (plus any",
-                  " prior good results) and optimising..",sep='')
-        order_function = RNAfoldWrap.sort_by_fe if local_use_vienna else None
-        spliced_codon_list = CodonSplicer.splice_aminos_to_codons(seq, localtable,
-                                localmapper, args.candidates, prior_efforts,
-                                args.verbose, order_function)
-        scrubbed_codons = localsubber.remove_mapped(spliced_codon_list)
-        if not localmapper.codon_indices(scrubbed_codons):
-            break
-        prior_efforts.append(scrubbed_codons)
-    return scrubbed_codons
-
-# get the sequence to convert:
-try:
-    with args.input_sequence as InputSequence:
-        seq_stream = []
-        hitcontent = False
-        for line in InputSequence:
-            line = line.strip()
-            if not line:
-                if not hitcontent:
-                    # Don't quit if there is leading whitespace in the file.
-                    continue
-                else:
-                    # If content has been reached and finished with, break
-                    # at first empty line (i.e. don't concatenate a multifasta
-                    # file into one long sequence, just use first block.)
-                    break
-            else: # i.e. line has contents
-                if line[0] not in ">;#":
-                    # Ignore comments and titles.
-                    # When meaningful non-comment/title/whitespace content is
-                    # hit, mark hitcontent True. This allows starting comment
-                    # matter and clarifying whitespace prior to initial block.
-                    seq_stream.append(line)
-                    hitcontent = True
-        seq = ''.join(seq_stream).upper()
-except KeyboardInterrupt:
-    print("\nKeyboardInterrupt detected. Aborting pysplicer.")
-    sys.exit(1)
-
-# First do leader codons:
-lead_seq = optimise_chunk(seq[:args.avoid_ngg_span], struct_mapper, leader_table, Struct_Subber, args.use_vienna)
-
-# And latter:
-if len(seq) > args.avoid_ngg_span:
-    latter_seq = optimise_chunk(seq[args.avoid_ngg_span:], mapper, translationtable, Subber)
-
-    # Now join and fix, without reverting to NGG codons: use leader-table minus
-    # structure mapping.
-    # No changes outside the splice junction should occur, as all options are already
-    # exhausted for this codon table, unless structure conflicted with raw sequence,
-    # in which case at this point certain substitutions may take place within the
-    # leader sequence now that structure is no longer a constraint.
-    lead_junction_subber = CodonJuggler.Substitutor(table=leader_table, mapper=mapper, verbose=args.verbose)
-    final = lead_junction_subber.remove_mapped(lead_seq + latter_seq)
-else:
-    final = lead_seq
-
-finalseq = ''.join(final)
-if args.output_rna: finalseq = finalseq.replace("T","U")
-
-if args.verbose:
-    print("Final codon list:",final)
-    print("Translates to:",translationtable.for_table.translate_codon_list_to_str(final))
-if args.verbose or args.heatmap:
-    print("Heatmap:\t\t",'-'.join([str(int(x*100)).zfill(2) for x in translationtable.heat_map(final)]))
-    if args.use_vienna:
-        print("Free energy of avoid-ngg-span region:", RNAfoldWrap.calc_fe(finalseq[:args.avoid_ngg_span]))
-
-if args.fasta_title: print(">",args.fasta_title)
-if args.wrap:
-    print("\n".join(sequtils._chunks(finalseq, args.wrap)))
-else:
-    print(finalseq)
+main_utils.main(args)
