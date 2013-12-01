@@ -52760,9 +52760,10 @@ class Enzyme:
         self.target_site = sequtils.bioseq._iupac_nuc_only(target_site,
                                                            strip_wildcards=True)
 
+# Why am I asking for permission here, and manually raising KeyErrors? :-/
 def get_enzyme(enzyme_name):
     if enzyme_name.lower() not in enzyme_dict:
-        raise IndexError("Cannot find enzyme '"+enzyme_name+\
+        raise KeyError("Cannot find enzyme '"+enzyme_name+\
                          "' in builtin enzymes library.")
     return Enzyme(enzyme_dict[enzyme_name.lower()])
     
@@ -52771,7 +52772,7 @@ def get_target_sites(enzyme_names, skip_failures = True, warn_failures = True):
     for name in enzyme_names:
         try:
             enz = get_enzyme(name)
-        except IndexError as E:
+        except KeyError as E:
             if warn_failures:
                 print("Failed to find enzyme",name,"in enzyme_lib builtins.",
                         file=stderr)

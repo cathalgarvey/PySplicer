@@ -10,12 +10,23 @@ from pysplicer import CodonSplicer
 from pysplicer import CodonJuggler
 from pysplicer import sequtils
 from pysplicer import builtin_frequency_tables
+from pysplicer import enzyme_lib
 
 # Won't work unless Vienna package is installed to path but importing does no harm:
 from pysplicer import RNAfoldWrap
 
 import json
 import sys
+
+def table_by_name(tablen):
+    'For getting species tables by name at command prompt or when otherwise lazy'
+    try:
+        table_to_use = builtin_frequency_tables.__dict__[args.species.lower()]
+    except KeyError:
+        raise KeyError("Could not find species table '"+args.species+\
+            "' - Available tables are: "+\
+            str(sorted(builtin_frequency_tables.__dict__.keys())))
+    return table_to_use
 
 def splice_compile(input_sequence,
                      excludes,                      # IUPAC DNA patterns to (attempt to) exclude from output
@@ -150,61 +161,74 @@ def splice_compile(input_sequence,
             print("Free energy of avoid-ngg-span region:", RNAfoldWrap.calc_fe(finalseq[:avoid_ngg_span]))
     
     return finalseq
+
+def parse_excludes_file(f):
+    'Expects *open file object*, parses it for either IUPAC sequences or quoted enzyme names, ignoring "#" comments.'
+    excludes = []
+    for line in f:
+        line = line.strip()
+        # Allow empty lines and "#" delimited comments.
+        if not line:            continue
+        elif line[0] == "#":    continue
+        elif line[0] in "\"'":  # Allow named enzymes if quoted with either " or '
+            try:
+                excludes.append(enzyme_lib.get_enzyme(line.strip("\"'")))
+            except KeyError:
+                print("Could not find enzyme {0} from excludes file in enzyme library: Skipping.".format(line), file=sys.stderr)
+        else: 
+            excludes.append(line.upper().replace("U","T")) 
+    return excludes
     
 def main(args):
     'Args is an argparse namespace object; this is the function called by pysplicer main script.'
 
-    # This is now redundant; would be cleaner to rewrite *again* to remove this and dict-like key access
-    args = vars(args)
-
     # Get excludes from invocation and from file, if any.
-    excludes = [x.strip().upper().replace("U","T") for x in args.pop('exclude')]
-    if args['exclude_file']:
-        for line in args['exclude_file']:
-            line = line.strip()
-            # Allow empty lines and "#" delimited comments.
-            if not line:            continue
-            elif line[0] == "#":    continue
-            else:                   excludes.append(line.upper().replace("U","T"))
-        args.pop('exclude_file').close()
+    excludes = [x.strip().upper().replace("U","T") for x in args.exclude]
+    if args.exclude_file:
+        excludes.extend(parse_excludes_file(args.exclude_file))
+        # All of the below now functionalised; test before deleting.
+        #for line in args.exclude_file:
+        #    line = line.strip()
+        #    # Allow empty lines and "#" delimited comments.
+        #    if not line:            continue
+        #    elif line[0] == "#":    continue
+        #    elif line[0] in "\"'":  # Allow named enzymes if quoted with either " or '
+        #        try:
+        #            excludes.append(enzyme_lib.get_enzyme(line.strip("\"'")))
+        #        except KeyError:
+        #            print("Could not find enzyme {0} from excludes file in enzyme library: Skipping.".format(line), file=sys.stderr)
+        #    else: 
+        #        excludes.append(line.upper().replace("U","T"))
+        args.exclude_file.close()
     
-    if args['exclude_enzymes']:
-        from pysplicer import enzyme_lib
+    if args.exclude_enzymes:
         # For each name, converts to lowercase, seeks in builtin enzyme list.
         # Prints to stderr if not found and seeks next enzyme.
-        excludes.extend(enzyme_lib.get_target_sites(args.pop('exclude_enzymes')))
+        excludes.extend(enzyme_lib.get_target_sites(args.exclude_enzymes))
 
-    if args['table']:
-        with open(args.pop('table')) as InFile:
+    if args.table:
+        with open(args.table) as InFile:
             table_to_use = json.load(InFile)
-    elif args['species']:
-        sname = args.pop('species')
-        try:
-            table_to_use = builtin_frequency_tables.__dict__[sname]
-        except KeyError:
-            raise KeyError("Could not find species table '"+sname+\
-                "' - Available tables are: "+\
-                str(sorted(builtin_frequency_tables.__dict__.keys())))
+    elif args.species:
+        table_to_use = table_by_name(args.species)
     else:
         raise Exception("Either a species name or a manually created Codon Frequency/Usage table must be provided for PySplicer to begin!")
-    
-    input_sequence = args.pop('input_sequence')
 
-    seq = splice_compile(input_sequence, excludes, table_to_use, # Positional
-                            output_rna = args['output_rna'],
-                            max_early_codon_frequency = args['max_early_codon_frequency'],
-                            min_codon_frequency = args['min_codon_frequency'],
-                            verbose = args['verbose'],
-                            avoid_ngg_span = args['avoid_ngg_span'],
-                            enrich_adenine = args['enrich_adenine'],
-                            ignore_structure = args['ignore_structure'],
-                            use_vienna = args['use_vienna'],
-                            max_early_free_energy = args['max_early_free_energy'],
-                            heatmap = args['heatmap'],
-                            candidates = args['candidates']
+    seq = splice_compile(args.input_sequence, excludes, table_to_use, # Positional
+                            output_rna = args.output_rna,
+                            max_early_codon_frequency = args.max_early_codon_frequency,
+                            min_codon_frequency = args.min_codon_frequency,
+                            verbose = args.verbose,
+                            avoid_ngg_span = args.avoid_ngg_span,
+                            enrich_adenine = args.enrich_adenine,
+                            ignore_structure = args.ignore_structure,
+                            use_vienna = args.use_vienna,
+                            max_early_free_energy = args.max_early_free_energy,
+                            heatmap = args.heatmap,
+                            candidates = args.candidates
                             )
 
-    if args['fasta_title']: print(">",args['fasta_title'])
-    if args['wrap']:
-        seq = "\n".join(sequtils._chunks(seq, args['wrap']))
+    if args.fasta_title: print(">",args.fasta_title)
+    if args.wrap:
+        seq = "\n".join(sequtils._chunks(seq, args.wrap))
     print(seq)
