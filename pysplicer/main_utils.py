@@ -20,10 +20,11 @@ import sys
 
 def table_by_name(tablen):
     'For getting species tables by name at command prompt or when otherwise lazy'
+    tablen = tablen.lower()
     try:
-        table_to_use = builtin_frequency_tables.__dict__[args.species.lower()]
+        table_to_use = builtin_frequency_tables.__dict__[tablen]
     except KeyError:
-        raise KeyError("Could not find species table '"+args.species+\
+        raise KeyError("Could not find species table '"+tablen+\
             "' - Available tables are: "+\
             str(sorted(builtin_frequency_tables.__dict__.keys())))
     return table_to_use
@@ -39,18 +40,29 @@ def splice_compile(input_sequence,
                      avoid_ngg_span=15,             # Number of leading codons in which to avoid NGG codons, default 15
                      enrich_adenine=False,          # Crude way to avoid early secondary structures, favour adenine-rich early codons
                      ignore_structure=False,        # Skip searching for and correcting minor secondary structures
-                     use_vienna=False,              # If Vienna is installed this should be True. Perform check?
+                     use_vienna=True,              # If Vienna is installed this should be True. Perform check?
                      max_early_free_energy=6,       # If using ViennaRNA, this is the maximum free energy allowable for the
                                                     #     first several codons (as specified in #avoid-ngg-span option)
                      heatmap = False,               # Output a frequency heatmap after compilation
                      candidates=200,                # Number of splice candidates to generate during each round of splicing
-                     fasta_title=None,              # Output as a FASTA block with this title
-                     wrap = 50,                     # Wrap output sequence to this many characters per line
-                     output_species=False,          # Print a list of available species tables to use
                      ):
     
     def vp(*args,**kwargs):
         if verbose: print(*args, **kwargs)
+    
+    # Tell the world!
+    vp('''splice_compile called with extra args:
+    output_rna = {0}
+    max_early_codon_frequency = {1}
+    min_codon_frequency = {2}
+    avoid_ngg_span = {3}
+    enrich_adenine = {4}
+    ignore_structure = {5}
+    use_vienna = {6}
+    max_early_free_energy = {7}
+    heatmap = {8}
+    candidates = {9}
+    '''.format(output_rna, max_early_codon_frequency, min_codon_frequency, avoid_ngg_span, enrich_adenine, ignore_structure, use_vienna, max_early_free_energy, heatmap, candidates))
     
     # Leader table for early NGG avoidance.
     leader_table = translators.ReverseTranslator(table_to_use, verbose=verbose)
@@ -63,7 +75,7 @@ def splice_compile(input_sequence,
     leader_table.set_max_frequency(max_early_codon_frequency)
     if enrich_adenine:
         leader_table.favour_base("A")
-    # leader_table.set_min_frequency(args.min_codon_frequency)
+    # leader_table.set_min_frequency(min_codon_frequency)
     
     translationtable = translators.ReverseTranslator(table_to_use, verbose=verbose)
     translationtable.set_min_frequency(min_codon_frequency)
@@ -71,7 +83,10 @@ def splice_compile(input_sequence,
     # A structure-mapper for identifying and removing unwanted secondary structures.
     # At present, this is super-inefficient, and *only* removes fairly simple hairpins.
     # HairpinMapper init args: (self, min_hairpin=5, endnum=3, min_score=10, max_loop=6, verbose=False):
-    if use_vienna:
+    if ignore_structure:
+        vp("Ignoring structure.")
+        Structure_Mapper = lambda seq: {}
+    elif use_vienna:
         Structure_Mapper = lambda seq: RNAfoldWrap.map_structure(seq, max_early_free_energy)
     else:
         _Structure_Mapper   = DNAMapper.HairpinMapper(verbose=verbose)
@@ -94,6 +109,7 @@ def splice_compile(input_sequence,
             vp("Attempt ",i,"/3 - Generating splice candidates (plus any",
                       " prior good results) and optimising..",sep='')
             order_function = RNAfoldWrap.sort_by_fe if local_use_vienna else None
+            if ignore_structure: order_function = lambda x:x
             spliced_codon_list = CodonSplicer.splice_aminos_to_codons(seq, localtable,
                                     localmapper, candidates, prior_efforts,
                                     verbose, order_function)
@@ -118,6 +134,7 @@ def splice_compile(input_sequence,
                         # If content has been reached and finished with, break
                         # at first empty line (i.e. don't concatenate a multifasta
                         # file into one long sequence, just use first block.)
+                        # TODO: Alternative batch mode? Redundant with Fastac2 I guess
                         break
                 else: # i.e. line has contents
                     if line[0] not in ">;#":
@@ -129,7 +146,7 @@ def splice_compile(input_sequence,
                         hitcontent = True
             seq = ''.join(seq_stream).upper()
     except KeyboardInterrupt:
-        print("\nKeyboardInterrupt detected. Aborting pysplicer.")
+        print("\nKeyboardInterrupt caught while parsing input. Aborting pysplicer.")
         sys.exit(1)
     
     # First do leader codons:
@@ -158,7 +175,7 @@ def splice_compile(input_sequence,
     if verbose or heatmap:
         print("Heatmap:\t\t",'-'.join([str(int(x*100)).zfill(2) for x in translationtable.heat_map(final)]))
         if use_vienna:
-            print("Free energy of avoid-ngg-span region:", RNAfoldWrap.calc_fe(finalseq[:avoid_ngg_span]))
+            print("Free energy of avoid-ngg-span region:", RNAfoldWrap.calc_fe(finalseq[:avoid_ngg_span*3]))
     
     return finalseq
 
@@ -172,7 +189,7 @@ def parse_excludes_file(f):
         elif line[0] == "#":    continue
         elif line[0] in "\"'":  # Allow named enzymes if quoted with either " or '
             try:
-                excludes.append(enzyme_lib.get_enzyme(line.strip("\"'")))
+                excludes.append(enzyme_lib.get_enzyme(line.strip("\"'")).target_site)
             except KeyError:
                 print("Could not find enzyme {0} from excludes file in enzyme library: Skipping.".format(line), file=sys.stderr)
         else: 

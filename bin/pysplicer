@@ -61,7 +61,7 @@ ArgP.add_argument("--enrich-adenine", action="store_true", default=False,
 ArgP.add_argument("--ignore-structure",action="store_true", default=False,
         help="Skip searching for and correcting minor secondary structures (a very time-consuming operation)")
         
-ArgP.add_argument("--use-vienna", action="store_true", default=False,
+ArgP.add_argument("--use-vienna", action="store_true", default=True,
         help="If the ViennaRNA software suite is found, use that instead of the crude inbuilt hairpin mapper.")
 
 ArgP.add_argument("--max-early-free-energy", type=float, default=6,
@@ -81,4 +81,7 @@ ArgP.add_argument("-w","--wrap",type=int,default = 50,
 
 args = ArgP.parse_args()
 
-main_utils.main(args)
+try:
+    main_utils.main(args)
+except KeyboardInterrupt:
+    print("Caught Ctrl-C, quitting")
