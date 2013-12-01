@@ -40,7 +40,7 @@ def splice_compile(input_sequence,
                      avoid_ngg_span=15,             # Number of leading codons in which to avoid NGG codons, default 15
                      enrich_adenine=False,          # Crude way to avoid early secondary structures, favour adenine-rich early codons
                      ignore_structure=False,        # Skip searching for and correcting minor secondary structures
-                     use_vienna=True,              # If Vienna is installed this should be True. Perform check?
+                     use_vienna=True,               # If Vienna is installed this should be True. Perform check?
                      max_early_free_energy=6,       # If using ViennaRNA, this is the maximum free energy allowable for the
                                                     #     first several codons (as specified in #avoid-ngg-span option)
                      heatmap = False,               # Output a frequency heatmap after compilation

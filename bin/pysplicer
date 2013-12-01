@@ -5,18 +5,9 @@ Released under the GNU Affero General Public License
 
 '''
 from pysplicer import main_utils
-#from pysplicer import DNAMapper
-#from pysplicer import translators
-#from pysplicer import CodonSplicer
-#from pysplicer import CodonJuggler
-#from pysplicer import sequtils
-#from pysplicer import builtin_frequency_tables
-# Won't work unless Vienna package is installed to path but importing does no harm:
-#from pysplicer import RNAfoldWrap
 
 import argparse
 import sys
-#import json
 
 ArgP = argparse.ArgumentParser(
     description=("A pure-python3 codon optimisation engine using weighted-random"

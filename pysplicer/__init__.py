@@ -2,4 +2,4 @@
 by Cathal Garvey
 Copyright 2013, licensed under the GNU AGPLv3.
 '''
-__version__=0.2
+__version__=0.3
