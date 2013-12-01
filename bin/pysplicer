@@ -64,7 +64,7 @@ ArgP.add_argument("--ignore-structure",action="store_true", default=False,
 ArgP.add_argument("--use-vienna", action="store_true", default=False,
         help="If the ViennaRNA software suite is found, use that instead of the crude inbuilt hairpin mapper.")
 
-ArgP.add_argument("--max-early-free-energy", type=float, default=-9,
+ArgP.add_argument("--max-early-free-energy", type=float, default=6,
         help="If using ViennaRNA, this is the maximum free energy allowable for the first several codons (as specified in avoid-ngg-span option).")
 
 # Deprecate:
@@ -80,7 +80,7 @@ ArgP.add_argument("--candidates",type=int,default=200,
 ArgP.add_argument("--fasta-title",type=str,
         help="Output as a FASTA block with this title.")
 
-ArgP.add_argument("-w","--wrap",type=int,
+ArgP.add_argument("-w","--wrap",type=int,default = 50,
         help="Wrap output sequence to this many characters per line.")
 
 #ArgP.add_argument("-S","--output-species",
