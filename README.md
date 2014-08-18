@@ -5,6 +5,9 @@ IUPAC match avoidance.
 
 By Cathal Garvey, released under the GNU Affero General Public License.
 
+If you like Free/Libre biotech, please consider supporting my work so I can
+resume making things like this: [![gittip](https://img.shields.io/gittip/onetruecathal.svg)](https://www.gittip.com/onetruecathal/)
+
 Installation
 ------------
 PySplicer is pure python and requires no compilation or building for basic function.
